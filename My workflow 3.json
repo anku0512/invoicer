@@ -1,0 +1,1499 @@
+{
+  "name": "My workflow 3",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1J25rq7oQfZhy5HvQBY3-Jrs_uqAQqOUK7Cem4t54aCk",
+          "mode": "list",
+          "cachedResultName": "PO invoice links",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1J25rq7oQfZhy5HvQBY3-Jrs_uqAQqOUK7Cem4t54aCk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1J25rq7oQfZhy5HvQBY3-Jrs_uqAQqOUK7Cem4t54aCk/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        16
+      ],
+      "id": "2f95d19f-873c-482c-91e5-2a509225d774",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "7WQWH3OJDVUsRrwj",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "={{ $json.Invoices }}",
+          "__regex": "https:\\/\\/(?:drive|docs)\\.google\\.com(?:\\/.*|)\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -960,
+        16
+      ],
+      "id": "97c23187-3993-48f2-a5fd-6d3c4ae8564e",
+      "name": "Download file1",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "W5WR6XnR8BJ4grj3",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$binary.data.fileExtension}}",
+                    "rightValue": "zip",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cc5504d0-50aa-422b-b556-c4b7b7864acd"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{$binary.data.fileExtension}}",
+                    "rightValue": "zip",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    },
+                    "id": "1e163928-b99e-413e-8581-5c2990224896"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -800,
+        16
+      ],
+      "name": "File Type Switch",
+      "id": "3351a16f-fb22-478c-b0a2-728142a75935"
+    },
+    {
+      "parameters": {
+        "fileName": "/tmp/input.zip",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        -608,
+        -160
+      ],
+      "name": "Write ZIP to /tmp4",
+      "id": "b75fb82d-d6e2-48da-a607-1fdb9adcdec9"
+    },
+    {
+      "parameters": {
+        "command": "mkdir -p /tmp/unzipped && unzip -o /tmp/input.zip -d /tmp/unzipped"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -256,
+        -160
+      ],
+      "name": "Unzip via OS4",
+      "id": "3e016e05-51d3-45ac-8d0a-654dda021ed0"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/tmp/unzipped/**/*.{pdf,png,jpg,jpeg}"
+      },
+      "type": "n8n-nodes-base.readBinaryFiles",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        -160
+      ],
+      "name": "Read Extracted Files2",
+      "id": "17ffc52d-a74f-4bcd-9b9d-6dc29c6e13aa"
+    },
+    {
+      "parameters": {
+        "functionCode": "return items.map((item, i) => {\n  return {\n    json: { filename: item.binary.data.fileName || `file_${i}` },\n    binary: { data: item.binary.data }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        144,
+        32
+      ],
+      "name": "Prep for LlamaParse",
+      "id": "7acf30db-266f-4962-aa69-b7f4f05b2231"
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [
+        416,
+        32
+      ],
+      "name": "Split In Batches",
+      "id": "2c11dfd9-def5-4320-8a21-8f4476bb080e"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloud.llamaindex.ai/api/v1/parsing/upload",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        16
+      ],
+      "id": "107fd354-bc48-4463-aa2e-3b43e0a467f4",
+      "name": "Upload",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ktP4bR7JVEtnVPva",
+          "name": "Header Auth account Llamaparse"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        816,
+        16
+      ],
+      "id": "582f0907-0b45-46ed-a593-e0f30686b4b5",
+      "name": "Wait",
+      "webhookId": "6ea9e1fe-966a-4dcf-8be1-78340c0ea8a4"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/v1/parsing/job/{{ $json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        16
+      ],
+      "id": "788db048-0b90-4bb0-8811-13363e258aef",
+      "name": "Status",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ktP4bR7JVEtnVPva",
+          "name": "Header Auth account Llamaparse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "SUCCESS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "5fe5fdf8-6137-4466-8e88-acaaebbf94a5"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SUCCESS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a1480222-bc5d-4697-b169-5e94a5afa0ed",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "PENDING",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PENDING"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1136,
+        16
+      ],
+      "id": "2b9805a3-30cd-4e36-ad74-e3ec8f941c28",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.cloud.llamaindex.ai/api/v1/parsing/job/{{ $json.id }}/result/markdown",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1296,
+        16
+      ],
+      "id": "28486760-f1a9-4fb3-a99f-3890053f6854",
+      "name": "Get",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ktP4bR7JVEtnVPva",
+          "name": "Header Auth account Llamaparse"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You will receive invoice markdown in the incoming JSON.\n\nParse and normalize per the System message.\nReturn ONLY the JSON object with \"invoice\" and \"line_items\" (no extra text).\n\nReturn only valid minified JSON. No code fences, no comments, no explanations.\n\nInput JSON:\n```json\n{{ JSON.stringify($json, null, 2) }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a finance data extraction agent. Input is JSON that contains a `markdown` field (sometimes the whole input is an array; use the first element). The markdown is an Indian GST invoice rendered as plain text with tables.\n\nOutput ONLY the JSON below (no prose, no explanations, no code fences):\n\n{\n  \"invoice\": { /* keys exactly match the 'Invoices' sheet headers */ },\n  \"line_items\": [ /* array of objects exactly matching the 'Invoice Line Items' headers */ ]\n}\n\nCRITICAL JSON RULES:\n- Must be valid JSON syntax\n- Use double quotes for all strings\n- Escape special characters (\\n, \\\", \\\\)\n- No trailing commas\n- No comments in the actual output\n- If description contains quotes, escape them as \\\"\n\nData Rules:\n- Numbers: strip ₹ and commas; keep 2 decimals.\n- Dates → YYYY-MM-DD; ack_date → YYYY-MM-DDTHH:mm:ss if present.\n- invoice_key = supplier_gstin + \"|\" + invoice_number (idempotent).\n- Invoice month like \"Dec.24\" → 2024-12.\n- Parse CGST/SGST/IGST rates/amounts. Totals check within ₹0.10.\n- Place of supply: extract state + code in parentheses.\n- HSN list: unique codes joined by commas.\n- Bank last4: last 4 digits of account number.\n- Line items: include only charge rows (ignore subtotal/tax/rounding/total/balance rows). If qty/unit missing, use \"\".\n- Allocate taxes to lines proportionally to line_amount; round to 2 decimals; adjust the LAST line so column sums match the invoice totals.\n\nHeaders to match exactly:\n\nInvoices:\ninvoice_key,supplier_name,supplier_gstin,buyer_name,buyer_gstin,invoice_number,invoice_date,due_date,payment_terms,invoice_month,place_of_supply_state,place_of_supply_code,currency,taxable_value,cgst_rate_pct,cgst_amount,sgst_rate_pct,sgst_amount,igst_rate_pct,igst_amount,rounding,invoice_total,balance_due,hsn_list,line_items_json,excel_mis_link,irn,ack_no,ack_date,bank_beneficiary,bank_name,bank_account_last4,bank_ifsc\n\nInvoice Line Items:\nline_key,invoice_key,invoice_number,invoice_date,supplier_name,description,hsn_sac,line_no,quantity,unit_price,line_amount,cgst_rate_pct,cgst_amount,sgst_rate_pct,sgst_amount,igst_rate_pct,igst_amount\n\nIf a field is unknown, return an empty string \"\" (not null).\n\nFor problematic content, simplify descriptions and avoid special characters that could break JSON."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1488,
+        16
+      ],
+      "id": "3bb6fa52-2cb6-4b5d-8d50-b4430003572f",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        176
+      ],
+      "id": "8253ee55-216c-48b2-9c94-6bdb602c361a",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "r7UO2UqCGmbFqv99",
+          "name": "GROQ_API_KEY"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const src = $json.output ?? $json;\n  \n  // Check if we have valid invoice data\n  if (!src || !src.invoice) {\n    console.log('No invoice data found, creating empty record');\n    return [{ json: { \n      error: 'No invoice data extracted',\n      filename: $('Prep for LlamaParse').item.json.filename || 'unknown',\n      raw_response: JSON.stringify(src).substring(0, 500)\n    }}];\n  }\n  \n  return [{ json: src.invoice }];\n  \n} catch (error) {\n  console.log('Error in Prep Invoice:', error.message);\n  return [{ json: { \n    error: `Invoice prep failed: ${error.message}`,\n    filename: $('Prep for LlamaParse').item.json.filename || 'unknown',\n    raw_response: JSON.stringify($json).substring(0, 500)\n  }}];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        16
+      ],
+      "id": "cca5219c-2e1f-41c0-ae22-92cdfb9ce87a",
+      "name": "Prep Invoice"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const src = $json.output ?? $json;\n  \n  // Check if we have valid line items data\n  if (!src || !src.line_items || !Array.isArray(src.line_items)) {\n    console.log('No line items data found, returning empty array');\n    return [];\n  }\n  \n  return src.line_items.map(j => ({ json: j }));\n  \n} catch (error) {\n  console.log('Error in Prep Line Items:', error.message);\n  return [{ json: { \n    error: `Line items prep failed: ${error.message}`,\n    filename: $('Prep for LlamaParse').item.json.filename || 'unknown'\n  }}];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        160
+      ],
+      "id": "08c1500d-8452-4f45-b308-4b1fb750436d",
+      "name": "Prep Line Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep every parsed invoice in workflow-global memory\nconst store = $getWorkflowStaticData('global');\nif (!store.invoices) store.invoices = [];\n\nconst item = $input.first();           // this node receives exactly 1 item from \"Prep Invoice\"\nif (item?.json && Object.keys(item.json).length) {\n  store.invoices.push(item.json);\n}\n\n// pass-through (important for the loop)\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        16
+      ],
+      "id": "93ef25d9-ffd0-483f-8ef2-e30e1a8fad9e",
+      "name": "Accumulate Invoices"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep every parsed line item in workflow-global memory\nconst store = $getWorkflowStaticData('global');\nif (!store.lines) store.lines = [];\n\nfor (const it of $input.all()) {\n  if (it?.json && Object.keys(it.json).length) store.lines.push(it.json);\n}\n\n// pass-through (important for the loop)\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        160
+      ],
+      "id": "4d08368b-30eb-4dab-b51b-6a541fae68e3",
+      "name": "Accumulate Lines"
+    },
+    {
+      "parameters": {
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [
+        2176,
+        112
+      ],
+      "id": "d6e5f87d-7102-4e3f-a945-120b4d57bc71",
+      "name": "Wait 1s",
+      "webhookId": "6266b2da-2ae1-47c6-b224-bc03f67e819c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nconst list = Array.isArray(store.invoices) ? store.invoices : [];\nreturn list.map(o => ({ json: o }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        432
+      ],
+      "id": "f6e9c92f-0770-4b74-b675-0b860e29cdf7",
+      "name": "Flush Invoices"
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nconst list = Array.isArray(store.lines) ? store.lines : [];\nreturn list.map(o => ({ json: o }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        704
+      ],
+      "id": "2c17ae66-bf1e-4bf7-b3e5-db22b0b5bfe2",
+      "name": "Flush Lines"
+    },
+    {
+      "parameters": {
+        "jsCode": "const store = $getWorkflowStaticData('global');\nstore.invoices = [];\nstore.lines = [];\nreturn [{ json: { reset: true } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        800
+      ],
+      "id": "ba0e70e0-3f14-40d9-95bd-1e8cf9b3cb27",
+      "name": "Reset Accumulators"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        192
+      ],
+      "id": "930fe6e3-2fd0-44e8-90c6-29e9a5e3d3d6",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "command": "rm -rf /tmp/unzipped && mkdir -p /tmp/unzipped"
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        -160
+      ],
+      "id": "d5188ea8-ce91-488e-94af-61573ffe0e6f",
+      "name": "Clean unzip dir"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"required\":[\"invoice\",\"line_items\"],\"properties\":{\"invoice\":{\"type\":\"object\",\"required\":[\"invoice_key\",\"supplier_name\",\"supplier_gstin\",\"buyer_name\",\"buyer_gstin\",\"invoice_number\",\"invoice_date\",\"invoice_total\"],\"properties\":{\"invoice_key\":{\"type\":\"string\"},\"supplier_name\":{\"type\":[\"string\",\"null\"]},\"supplier_gstin\":{\"type\":[\"string\",\"null\"]},\"buyer_name\":{\"type\":[\"string\",\"null\"]},\"buyer_gstin\":{\"type\":[\"string\",\"null\"]},\"invoice_number\":{\"type\":\"string\"},\"invoice_date\":{\"type\":\"string\"},\"due_date\":{\"type\":[\"string\",\"null\"]},\"payment_terms\":{\"type\":[\"string\",\"null\"]},\"invoice_month\":{\"type\":[\"string\",\"null\"]},\"place_of_supply_state\":{\"type\":[\"string\",\"null\"]},\"place_of_supply_code\":{\"type\":[\"string\",\"null\"]},\"currency\":{\"type\":[\"string\",\"null\"]},\"taxable_value\":{\"type\":[\"string\",\"null\"]},\"cgst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"cgst_amount\":{\"type\":[\"string\",\"null\"]},\"sgst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"sgst_amount\":{\"type\":[\"string\",\"null\"]},\"igst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"igst_amount\":{\"type\":[\"string\",\"null\"]},\"rounding\":{\"type\":[\"string\",\"null\"]},\"invoice_total\":{\"type\":\"string\"},\"balance_due\":{\"type\":[\"string\",\"null\"]},\"hsn_list\":{\"type\":[\"string\",\"null\"]},\"line_items_json\":{\"type\":[\"string\",\"null\"]},\"excel_mis_link\":{\"type\":[\"string\",\"null\"]},\"irn\":{\"type\":[\"string\",\"null\"]},\"ack_no\":{\"type\":[\"string\",\"null\"]},\"ack_date\":{\"type\":[\"string\",\"null\"]},\"bank_beneficiary\":{\"type\":[\"string\",\"null\"]},\"bank_name\":{\"type\":[\"string\",\"null\"]},\"bank_account_last4\":{\"type\":[\"string\",\"null\"]},\"bank_ifsc\":{\"type\":[\"string\",\"null\"]}}},\"line_items\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"invoice_key\",\"invoice_number\",\"description\",\"line_no\",\"line_amount\"],\"properties\":{\"line_key\":{\"type\":[\"string\",\"null\"]},\"invoice_key\":{\"type\":\"string\"},\"invoice_number\":{\"type\":\"string\"},\"invoice_date\":{\"type\":[\"string\",\"null\"]},\"supplier_name\":{\"type\":[\"string\",\"null\"]},\"description\":{\"type\":\"string\"},\"hsn_sac\":{\"type\":[\"string\",\"null\"]},\"line_no\":{\"type\":\"string\"},\"quantity\":{\"type\":[\"string\",\"null\"]},\"unit_price\":{\"type\":[\"string\",\"null\"]},\"line_amount\":{\"type\":\"string\"},\"cgst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"cgst_amount\":{\"type\":[\"string\",\"null\"]},\"sgst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"sgst_amount\":{\"type\":[\"string\",\"null\"]},\"igst_rate_pct\":{\"type\":[\"string\",\"null\"]},\"igst_amount\":{\"type\":[\"string\",\"null\"]}}}}}}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1648,
+        352
+      ],
+      "id": "7d5d2559-4015-4695-979e-d1adc79ffd1d",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M",
+          "mode": "list",
+          "cachedResultName": "n8n invoices 2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Invoices",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "invoice_key"
+          ],
+          "schema": [
+            {
+              "id": "invoice_key",
+              "displayName": "invoice_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplier_name",
+              "displayName": "supplier_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplier_gstin",
+              "displayName": "supplier_gstin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "buyer_name",
+              "displayName": "buyer_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "buyer_gstin",
+              "displayName": "buyer_gstin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "due_date",
+              "displayName": "due_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "payment_terms",
+              "displayName": "payment_terms",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_month",
+              "displayName": "invoice_month",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "place_of_supply_state",
+              "displayName": "place_of_supply_state",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "place_of_supply_code",
+              "displayName": "place_of_supply_code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "taxable_value",
+              "displayName": "taxable_value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cgst_rate_pct",
+              "displayName": "cgst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cgst_amount",
+              "displayName": "cgst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sgst_rate_pct",
+              "displayName": "sgst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sgst_amount",
+              "displayName": "sgst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "igst_rate_pct",
+              "displayName": "igst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "igst_amount",
+              "displayName": "igst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "rounding",
+              "displayName": "rounding",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_total",
+              "displayName": "invoice_total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "balance_due",
+              "displayName": "balance_due",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hsn_list",
+              "displayName": "hsn_list",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "line_items_json",
+              "displayName": "line_items_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "excel_mis_link",
+              "displayName": "excel_mis_link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "irn",
+              "displayName": "irn",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ack_no",
+              "displayName": "ack_no",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ack_date",
+              "displayName": "ack_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "bank_beneficiary",
+              "displayName": "bank_beneficiary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "bank_name",
+              "displayName": "bank_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "bank_account_last4",
+              "displayName": "bank_account_last4",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "bank_ifsc",
+              "displayName": "bank_ifsc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        400
+      ],
+      "id": "1c0152f1-970f-40a3-ba2b-e1c178b4cdb4",
+      "name": "Append or update row in Invoices",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "lST4MJFEz3bTfiTl",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M",
+          "mode": "list",
+          "cachedResultName": "n8n invoices 2",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 974682751,
+          "mode": "list",
+          "cachedResultName": "Invoice Line Items",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M/edit#gid=974682751"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "line_key"
+          ],
+          "schema": [
+            {
+              "id": "line_key",
+              "displayName": "line_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_key",
+              "displayName": "invoice_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "supplier_name",
+              "displayName": "supplier_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hsn_sac",
+              "displayName": "hsn_sac",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "line_no",
+              "displayName": "line_no",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quantity",
+              "displayName": "quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "unit_price",
+              "displayName": "unit_price",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "line_amount",
+              "displayName": "line_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cgst_rate_pct",
+              "displayName": "cgst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "cgst_amount",
+              "displayName": "cgst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sgst_rate_pct",
+              "displayName": "sgst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sgst_amount",
+              "displayName": "sgst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "igst_rate_pct",
+              "displayName": "igst_rate_pct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "igst_amount",
+              "displayName": "igst_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        912,
+        608
+      ],
+      "id": "7a30d430-0780-49a9-9bec-7ee9670bd581",
+      "name": "Append row in Invoice Line Items",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "lST4MJFEz3bTfiTl",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Download file1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file1": {
+      "main": [
+        [
+          {
+            "node": "File Type Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "File Type Switch": {
+      "main": [
+        [
+          {
+            "node": "Write ZIP to /tmp4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep for LlamaParse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write ZIP to /tmp4": {
+      "main": [
+        [
+          {
+            "node": "Clean unzip dir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unzip via OS4": {
+      "main": [
+        [
+          {
+            "node": "Read Extracted Files2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Extracted Files2": {
+      "main": [
+        [
+          {
+            "node": "Prep for LlamaParse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep for LlamaParse": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Upload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flush Invoices",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Flush Lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Get",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Prep Invoice",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Invoice": {
+      "main": [
+        [
+          {
+            "node": "Accumulate Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Line Items": {
+      "main": [
+        [
+          {
+            "node": "Accumulate Lines",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate Invoices": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accumulate Lines": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flush Invoices": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flush Lines": {
+      "main": [
+        [
+          {
+            "node": "Append row in Invoice Line Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reset Accumulators",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean unzip dir": {
+      "main": [
+        [
+          {
+            "node": "Unzip via OS4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in Invoices": {
+      "main": [
+        []
+      ]
+    },
+    "Append row in Invoice Line Items": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3d62a1d1-4fce-4154-bfd4-2af5583acf7f",
+  "meta": {
+    "instanceId": "3c5c76d08b687ca59d19d146267caa587398ce10377ebcf31025bf82b0607d8f"
+  },
+  "id": "TSXdgaUvLnnaCM3A",
+  "tags": []
+}

@@ -1,0 +1,37 @@
+Copy this to a new file named .env and fill in values
+
+# Google Service Account (use JSON key fields)
+GOOGLE_CLIENT_EMAIL=
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Source sheet (where links live)
+SOURCE_SHEET_ID=1J25rq7oQfZhy5HvQBY3-Jrs_uqAQqOUK7Cem4t54aCk
+# Either the tab name (e.g., Sheet1) or gid (e.g., gid=0)
+SOURCE_SHEET_TAB=Sheet1
+# Column header that contains the Drive links (exact text)
+SOURCE_LINK_COLUMN=Invoices
+
+# Target sheet (where parsed data is written)
+TARGET_SHEET_ID=1hAsNGsoa5fCFVB5mMn1Vln3PTDAlkLC8SRuZmA9AJ3M
+TARGET_INVOICES_TAB=Invoices
+TARGET_LINE_ITEMS_TAB=Invoice Line Items
+
+# LlamaParse
+# US region base URL (no eu prefix)
+LLAMAPARSE_BASE_URL=https://api.cloud.llamaindex.ai
+LLAMAPARSE_API_KEY=
+LLAMAPARSE_PROJECT_ID=
+
+# Groq (LLM)
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-20b
+GROQ_MAX_RETRIES=5
+GROQ_RETRY_BASE_MS=1000
+GROQ_BATCH_SIZE=5
+
+# Runtime
+POLL_CRON=*/1 * * * *
+BATCH_SIZE=1
+POLL_INTERVAL_MS=2000
+TMP_DIR=/tmp/invoicer
+LOG_LEVEL=info
