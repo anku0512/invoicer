@@ -71,10 +71,10 @@ export function useAuth() {
   };
 
   const updateUserData = async (updates: Partial<UserData>) => {
-    if (!user) return;
+    if (!user || !userData) return;
     
     try {
-      const updatedData = { ...userData, ...updates };
+      const updatedData: UserData = { ...userData, ...updates };
       await setDoc(doc(db, 'users', user.uid), updatedData, { merge: true });
       setUserData(updatedData);
     } catch (error) {
