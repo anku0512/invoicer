@@ -20,10 +20,15 @@ export function getGoogleAuth() {
     return currentUserAuth;
   }
   
+  // Check if service account credentials are available
+  if (!env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {
+    throw new Error('Google service account credentials not configured. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables.');
+  }
+  
   try {
     const jwt = new google.auth.JWT({
       email: env.GOOGLE_CLIENT_EMAIL,
-      key: env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      key: env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       scopes: SCOPES,
     });
     return jwt;

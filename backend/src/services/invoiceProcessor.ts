@@ -28,7 +28,7 @@ export class InvoiceProcessor {
       process.env.TARGET_SHEET_ID = sheetId;
       
       try {
-        await this.runUserInvoiceProcessing();
+        await this.runUserInvoiceProcessing(sheetId);
         console.log(`Successfully processed invoices for sheet: ${sheetId}`);
       } finally {
         // Restore original values
@@ -42,9 +42,9 @@ export class InvoiceProcessor {
     }
   }
 
-  private async runUserInvoiceProcessing(): Promise<void> {
+  private async runUserInvoiceProcessing(sheetId: string): Promise<void> {
     // Use your existing runOnce logic but with user's auth
-    await ensureHeaders();
+    await ensureHeaders(sheetId);
     await prepareTmp();
     const links = await readSourceLinks();
     const acc = new Accumulator();
@@ -118,8 +118,8 @@ export class InvoiceProcessor {
     }
 
     if (acc.invoices.length || acc.lines.length) {
-      await upsertInvoices(acc.invoices);
-      await appendLineItems(acc.lines);
+      await upsertInvoices(acc.invoices, sheetId);
+      await appendLineItems(acc.lines, sheetId);
     }
   }
 }
