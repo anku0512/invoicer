@@ -60,7 +60,7 @@ export class EmailChecker {
     }
   }
 
-  private async processUserEmails(userData: UserData): Promise<void> {
+  public async processUserEmails(userData: UserData): Promise<void> {
     console.log(`Processing emails for user: ${userData.email}`);
     
     try {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const UserSettings: React.FC = () => {
@@ -109,6 +110,15 @@ const UserSettings: React.FC = () => {
               <li>3. Invoice files are downloaded and processed automatically</li>
               <li>4. Results are added to your Google Sheet</li>
             </ol>
+          </div>
+
+          <div className="mt-4">
+            <Link
+              to="/process"
+              className="w-full flex justify-center py-2 px-4 border border-indigo-300 rounded-md shadow-sm text-sm font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Process Drive URL Manually
+            </Link>
           </div>
 
           {userData?.lastProcessed && (

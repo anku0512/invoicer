@@ -49,6 +49,53 @@ app.get('/trigger', async (req, res) => {
   }
 });
 
+// Process single Drive URL endpoint
+app.post('/api/process-url', async (req, res) => {
+  try {
+    const { driveUrl, sheetId } = req.body;
+    
+    if (!driveUrl || !sheetId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'driveUrl and sheetId are required' 
+      });
+    }
+
+    console.log(`Processing Drive URL: ${driveUrl} for sheet: ${sheetId}`);
+    
+    // Create a mock user data for processing
+    const mockUserData = {
+      uid: 'manual-user',
+      email: 'manual@example.com',
+      displayName: 'Manual User',
+      sheetId: sheetId,
+      emailLabel: 'manual',
+      isActive: true,
+      createdAt: new Date(),
+      lastProcessed: new Date()
+    };
+
+    // Process the single URL
+    const emailChecker = new EmailChecker();
+    await emailChecker.processUserEmails(mockUserData);
+    
+    console.log('Drive URL processing completed successfully');
+    res.status(200).json({ 
+      success: true, 
+      message: 'Drive URL processed successfully',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Drive URL processing failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Cron job endpoint
 app.get('/api/cron', async (req, res) => {
   // Optional: Add authentication check here if needed

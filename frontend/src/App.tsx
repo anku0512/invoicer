@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Login from './components/Login';
 import UserSettings from './components/UserSettings';
+import DriveUrlProcessor from './components/DriveUrlProcessor';
 import './App.css';
 
 function App() {
@@ -23,6 +24,10 @@ function App() {
           <Route 
             path="/" 
             element={user ? <UserSettings /> : <Login />} 
+          />
+          <Route 
+            path="/process" 
+            element={user ? <DriveUrlProcessor /> : <Login />} 
           />
         </Routes>
       </div>
