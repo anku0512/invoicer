@@ -96,9 +96,9 @@ This guide will walk you through deploying the Invoice Processor with Email Auto
 3. Generate an API key
 4. Note down the API key
 
-## Step 5: Deploy to Vercel
+## Step 5: Deploy to Production
 
-### 5.1 Deploy Frontend
+### 5.1 Deploy Frontend (Vercel)
 
 1. Push your code to GitHub
 2. Go to [Vercel Dashboard](https://vercel.com/dashboard)
@@ -120,16 +120,18 @@ This guide will walk you through deploying the Invoice Processor with Email Auto
    ```
 7. Deploy
 
-### 5.2 Deploy Backend
+### 5.2 Deploy Backend (Render)
 
-1. Create another Vercel project
-2. Import the same GitHub repository
-3. Configure project:
-   - Framework Preset: Other
-   - Root Directory: `backend`
-   - Build Command: `npm run build`
-   - Output Directory: `dist`
-4. Add environment variables:
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Click "New +" → "Web Service"
+3. Connect your GitHub repository
+4. Configure service:
+   - **Name**: `invoicer-backend`
+   - **Root Directory**: `backend`
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm start`
+   - **Runtime**: Node.js
+5. Add environment variables:
    ```
    FIREBASE_PROJECT_ID=your_firebase_project_id
    FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nyour_private_key\n-----END PRIVATE KEY-----"
@@ -141,7 +143,18 @@ This guide will walk you through deploying the Invoice Processor with Email Auto
    GROQ_API_KEY=your_groq_api_key
    CRON_SECRET=your_optional_secret
    ```
-5. Deploy
+6. Deploy
+
+### 5.3 Set Up Cron Job (Render Cron Jobs)
+
+1. In Render Dashboard, go to "Cron Jobs"
+2. Click "New Cron Job"
+3. Configure:
+   - **Name**: `invoicer-email-checker`
+   - **Schedule**: `*/10 * * * *` (every 10 minutes)
+   - **Command**: `curl -X GET https://your-backend-url.onrender.com/api/cron`
+   - **Service**: Select your backend service
+4. Save and activate
 
 ## Step 6: Configure Firestore Security Rules
 
@@ -173,10 +186,10 @@ service cloud.firestore {
 
 ### 7.2 Test Backend
 
-1. Check Vercel function logs
+1. Check Render service logs
 2. Manually trigger the cron job:
    ```bash
-   curl https://your-backend-domain.vercel.app/api/cron
+   curl https://your-backend-url.onrender.com/api/cron
    ```
 3. Verify it processes users correctly
 
@@ -192,10 +205,11 @@ service cloud.firestore {
 
 ### 8.1 Monitoring
 
-- Check Vercel function logs regularly
+- Check Render service logs regularly
 - Monitor Firestore usage
 - Watch for API rate limits
 - Check Google Sheets for data quality
+- Monitor Render cron job execution
 
 ### 8.2 Maintenance
 
