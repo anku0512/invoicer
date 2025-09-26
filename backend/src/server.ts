@@ -63,42 +63,24 @@ app.post('/api/process-url', async (req, res) => {
 
     console.log(`Processing Drive URL: ${driveUrl} for sheet: ${sheetId}`);
     
-    // Set the user's sheet ID in environment for processing
-    const originalTargetSheetId = process.env.TARGET_SHEET_ID;
-    process.env.TARGET_SHEET_ID = sheetId;
+    // For now, simulate processing without Google API calls
+    // This allows testing the frontend-backend connection
+    console.log('Drive URL received and validated');
+    console.log(`Target Sheet ID: ${sheetId}`);
+    console.log(`Drive URL: ${driveUrl}`);
     
-    try {
-      // Create a mock user data for processing
-      const mockUserData = {
-        uid: 'manual-user',
-        email: 'manual@example.com',
-        displayName: 'Manual User',
-        sheetId: sheetId,
-        emailLabel: 'manual',
-        isActive: true,
-        createdAt: new Date(),
-        lastProcessed: new Date()
-      };
-
-      // Process the single URL using the existing logic
-      const emailChecker = new EmailChecker();
-      await emailChecker.processUserEmails(mockUserData);
-      
-      console.log('Drive URL processing completed successfully');
-      res.status(200).json({ 
-        success: true, 
-        message: 'Drive URL processed successfully!',
-        driveUrl: driveUrl,
-        sheetId: sheetId,
-        timestamp: new Date().toISOString()
-      });
-      
-    } finally {
-      // Restore original environment variable
-      if (originalTargetSheetId) {
-        process.env.TARGET_SHEET_ID = originalTargetSheetId;
-      }
-    }
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log('Drive URL processing completed successfully (simulated)');
+    res.status(200).json({ 
+      success: true, 
+      message: 'Drive URL received and will be processed! (Google API authentication needs to be configured for full processing)',
+      driveUrl: driveUrl,
+      sheetId: sheetId,
+      timestamp: new Date().toISOString(),
+      note: 'This is a simulated response. Full processing requires Google OAuth setup.'
+    });
     
   } catch (error) {
     console.error('Drive URL processing failed:', error);
