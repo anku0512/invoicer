@@ -21,23 +21,21 @@ async function processSingleDriveFile(fileId: string, sheetId: string): Promise<
     // Prepare temporary directory
     await prepareTmp();
     
-    // Download the file from Drive
-    console.log('Downloading file from Drive...');
-    const fileData = await downloadDriveFile(fileId);
-    console.log(`File downloaded: ${fileData.fileName}`);
+    // For now, create a simple test PDF buffer for LlamaParse testing
+    console.log('Creating test PDF for LlamaParse testing...');
     
-    // Check if it's a zip file and extract if needed
-    let filesToProcess: { buffer: Buffer; fileName: string }[] = [];
-    if (isZip(fileData.fileName)) {
-      console.log('File is a zip, extracting...');
-      const extractedResult = await writeZipAndExtract(fileData.buffer);
-      filesToProcess = extractedResult.files.map(f => ({
-        buffer: fs.readFileSync(f.filePath),
-        fileName: f.fileName
-      }));
-    } else {
-      filesToProcess = [fileData];
-    }
+    // Create a minimal PDF buffer (PDF header + basic structure)
+    const pdfHeader = '%PDF-1.4\n';
+    const pdfContent = pdfHeader + '1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n2 0 obj\n<<\n/Type /Pages\n/Kids [3 0 R]\n/Count 1\n>>\nendobj\n3 0 obj\n<<\n/Type /Page\n/Parent 2 0 R\n/MediaBox [0 0 612 792]\n/Contents 4 0 R\n>>\nendobj\n4 0 obj\n<<\n/Length 44\n>>\nstream\nBT\n/F1 12 Tf\n100 700 Td\n(Test Invoice) Tj\nET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000204 00000 n \ntrailer\n<<\n/Size 5\n/Root 1 0 R\n>>\nstartxref\n297\n%%EOF';
+    
+    const testFileData = {
+      buffer: Buffer.from(pdfContent),
+      fileName: 'test-invoice.pdf'
+    };
+    console.log(`Created test PDF: ${testFileData.fileName} (${testFileData.buffer.length} bytes)`);
+    
+    // Process the test file
+    let filesToProcess: { buffer: Buffer; fileName: string }[] = [testFileData];
     
     console.log(`Files to process: ${filesToProcess.length}`);
     
