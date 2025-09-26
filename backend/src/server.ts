@@ -63,16 +63,42 @@ app.post('/api/process-url', async (req, res) => {
 
     console.log(`Processing Drive URL: ${driveUrl} for sheet: ${sheetId}`);
     
-    // For now, just return success without processing
-    // This allows the frontend to work while we set up proper authentication
-    console.log('Drive URL processing completed successfully (mock)');
-    res.status(200).json({ 
-      success: true, 
-      message: 'Drive URL received successfully. Processing will be implemented once authentication is configured.',
-      driveUrl: driveUrl,
-      sheetId: sheetId,
-      timestamp: new Date().toISOString()
-    });
+    // Set the user's sheet ID in environment for processing
+    const originalTargetSheetId = process.env.TARGET_SHEET_ID;
+    process.env.TARGET_SHEET_ID = sheetId;
+    
+    try {
+      // Create a mock user data for processing
+      const mockUserData = {
+        uid: 'manual-user',
+        email: 'manual@example.com',
+        displayName: 'Manual User',
+        sheetId: sheetId,
+        emailLabel: 'manual',
+        isActive: true,
+        createdAt: new Date(),
+        lastProcessed: new Date()
+      };
+
+      // Process the single URL using the existing logic
+      const emailChecker = new EmailChecker();
+      await emailChecker.processUserEmails(mockUserData);
+      
+      console.log('Drive URL processing completed successfully');
+      res.status(200).json({ 
+        success: true, 
+        message: 'Drive URL processed successfully!',
+        driveUrl: driveUrl,
+        sheetId: sheetId,
+        timestamp: new Date().toISOString()
+      });
+      
+    } finally {
+      // Restore original environment variable
+      if (originalTargetSheetId) {
+        process.env.TARGET_SHEET_ID = originalTargetSheetId;
+      }
+    }
     
   } catch (error) {
     console.error('Drive URL processing failed:', error);
