@@ -1,9 +1,105 @@
 import express from 'express';
 import cors from 'cors';
 import { EmailChecker } from './cron/emailChecker';
+import { downloadDriveFile } from './google/drive';
+import { prepareTmp, isZip, writeZipAndExtract } from './ingest/fileHandler';
+import { uploadToLlamaParse, pollJob, getMarkdown } from './ingest/llamaparse';
+import { normalizeMarkdown } from './ai/normalize';
+import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
+import { Accumulator } from './core/accumulator';
+import fs from 'fs-extra';
+import path from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Helper function to process a single Drive file
+async function processSingleDriveFile(fileId: string, sheetId: string): Promise<void> {
+  console.log(`Processing Drive file: ${fileId}`);
+  
+  try {
+    // Prepare temporary directory
+    await prepareTmp();
+    
+    // Download the file from Drive
+    console.log('Downloading file from Drive...');
+    const fileData = await downloadDriveFile(fileId);
+    console.log(`File downloaded: ${fileData.fileName}`);
+    
+    // Check if it's a zip file and extract if needed
+    let filesToProcess: { buffer: Buffer; fileName: string }[] = [];
+    if (isZip(fileData.fileName)) {
+      console.log('File is a zip, extracting...');
+      const extractedResult = await writeZipAndExtract(fileData.buffer);
+      filesToProcess = extractedResult.files.map(f => ({
+        buffer: fs.readFileSync(f.filePath),
+        fileName: f.fileName
+      }));
+    } else {
+      filesToProcess = [fileData];
+    }
+    
+    console.log(`Files to process: ${filesToProcess.length}`);
+    
+    // Process each file with LlamaParse
+    const acc = new Accumulator();
+    
+    for (const file of filesToProcess) {
+      console.log(`Processing file: ${file.fileName}`);
+      
+      // Upload to LlamaParse
+      const jobResult = await uploadToLlamaParse(file.buffer, file.fileName);
+      console.log(`LlamaParse job ID: ${jobResult.id}`);
+      
+      // Poll for completion
+      const result = await pollJob(jobResult.id);
+      console.log(`LlamaParse completed: ${result}`);
+      
+      if (result === 'SUCCESS') {
+        // Get the markdown result
+        const markdown = await getMarkdown(jobResult.id);
+        console.log(`Got markdown result (${markdown.length} chars)`);
+        
+        // Normalize the markdown
+        const normalized = await normalizeMarkdown(markdown);
+        console.log(`Normalized data:`, normalized);
+        
+        // Add to accumulator
+        if (normalized && normalized.invoice) {
+          acc.addInvoice(normalized.invoice);
+          if (normalized.line_items && normalized.line_items.length > 0) {
+            acc.addLines(normalized.line_items);
+          }
+        }
+      } else {
+        console.log(`LlamaParse job failed: ${result}`);
+      }
+    }
+    
+    // Ensure headers exist in the sheet
+    await ensureHeaders();
+    
+    // Process all accumulated data
+    const allInvoices = acc.invoices;
+    console.log(`Total invoices to process: ${allInvoices.length}`);
+    
+    if (allInvoices.length > 0) {
+      // Upsert invoices to the sheet
+      await upsertInvoices(allInvoices);
+      console.log('Invoices upserted to sheet');
+      
+      // Append line items
+      await appendLineItems(allInvoices);
+      console.log('Line items appended to sheet');
+    }
+    
+    console.log('File processing completed successfully');
+    
+  } catch (error) {
+    console.error('Error processing file:', error);
+    throw error;
+  }
+}
 
 // Middleware
 app.use(cors());
@@ -63,24 +159,43 @@ app.post('/api/process-url', async (req, res) => {
 
     console.log(`Processing Drive URL: ${driveUrl} for sheet: ${sheetId}`);
     
-    // For now, simulate processing without Google API calls
-    // This allows testing the frontend-backend connection
-    console.log('Drive URL received and validated');
-    console.log(`Target Sheet ID: ${sheetId}`);
-    console.log(`Drive URL: ${driveUrl}`);
+    // Extract file ID from Drive URL
+    const fileIdMatch = driveUrl.match(/\/file\/d\/([a-zA-Z0-9-_]+)/);
+    if (!fileIdMatch) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid Google Drive URL format' 
+      });
+    }
     
-    // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const fileId = fileIdMatch[1];
+    console.log(`Extracted file ID: ${fileId}`);
     
-    console.log('Drive URL processing completed successfully (simulated)');
-    res.status(200).json({ 
-      success: true, 
-      message: 'Drive URL received and will be processed! (Google API authentication needs to be configured for full processing)',
-      driveUrl: driveUrl,
-      sheetId: sheetId,
-      timestamp: new Date().toISOString(),
-      note: 'This is a simulated response. Full processing requires Google OAuth setup.'
-    });
+    // Set the user's sheet ID in environment for processing
+    const originalTargetSheetId = process.env.TARGET_SHEET_ID;
+    const originalSourceSheetId = process.env.SOURCE_SHEET_ID;
+    process.env.TARGET_SHEET_ID = sheetId;
+    process.env.SOURCE_SHEET_ID = sheetId;
+    
+    try {
+      // Process the file using LlamaParse and your existing logic
+      await processSingleDriveFile(fileId, sheetId);
+      
+      console.log('Drive URL processing completed successfully');
+      res.status(200).json({ 
+        success: true, 
+        message: 'Drive URL processed successfully with LlamaParse!',
+        driveUrl: driveUrl,
+        sheetId: sheetId,
+        fileId: fileId,
+        timestamp: new Date().toISOString()
+      });
+      
+    } finally {
+      // Restore original environment variables
+      if (originalTargetSheetId) process.env.TARGET_SHEET_ID = originalTargetSheetId;
+      if (originalSourceSheetId) process.env.SOURCE_SHEET_ID = originalSourceSheetId;
+    }
     
   } catch (error) {
     console.error('Drive URL processing failed:', error);
