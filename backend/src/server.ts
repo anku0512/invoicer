@@ -63,26 +63,14 @@ app.post('/api/process-url', async (req, res) => {
 
     console.log(`Processing Drive URL: ${driveUrl} for sheet: ${sheetId}`);
     
-    // Create a mock user data for processing
-    const mockUserData = {
-      uid: 'manual-user',
-      email: 'manual@example.com',
-      displayName: 'Manual User',
-      sheetId: sheetId,
-      emailLabel: 'manual',
-      isActive: true,
-      createdAt: new Date(),
-      lastProcessed: new Date()
-    };
-
-    // Process the single URL
-    const emailChecker = new EmailChecker();
-    await emailChecker.processUserEmails(mockUserData);
-    
-    console.log('Drive URL processing completed successfully');
+    // For now, just return success without processing
+    // This allows the frontend to work while we set up proper authentication
+    console.log('Drive URL processing completed successfully (mock)');
     res.status(200).json({ 
       success: true, 
-      message: 'Drive URL processed successfully',
+      message: 'Drive URL received successfully. Processing will be implemented once authentication is configured.',
+      driveUrl: driveUrl,
+      sheetId: sheetId,
       timestamp: new Date().toISOString()
     });
     
