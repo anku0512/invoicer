@@ -14,6 +14,41 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Manual trigger endpoint with simple UI
+app.get('/trigger', async (req, res) => {
+  try {
+    console.log('Manual trigger started...');
+    
+    const emailChecker = new EmailChecker();
+    await emailChecker.checkAllUsers();
+    
+    console.log('Manual trigger completed successfully');
+    res.send(`
+      <html>
+        <head><title>Invoice Processor</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+          <h1>✅ Invoice Processing Complete!</h1>
+          <p>Email check completed successfully at ${new Date().toLocaleString()}</p>
+          <p><a href="/trigger" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Run Again</a></p>
+        </body>
+      </html>
+    `);
+    
+  } catch (error) {
+    console.error('Manual trigger failed:', error);
+    res.status(500).send(`
+      <html>
+        <head><title>Invoice Processor</title></head>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+          <h1>❌ Error</h1>
+          <p>Failed to process emails: ${error instanceof Error ? error.message : 'Unknown error'}</p>
+          <p><a href="/trigger" style="background: #dc3545; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Try Again</a></p>
+        </body>
+      </html>
+    `);
+  }
+});
+
 // Cron job endpoint
 app.get('/api/cron', async (req, res) => {
   // Optional: Add authentication check here if needed
