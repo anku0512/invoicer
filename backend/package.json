@@ -1,0 +1,28 @@
+{
+  "name": "invoicer-backend",
+  "version": "1.0.0",
+  "description": "Backend cron service for invoice processing",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@vercel/node": "^5.3.24",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.0.0",
+    "form-data": "^4.0.0",
+    "fs-extra": "^11.2.0",
+    "googleapis": "^131.0.0",
+    "unzipper": "^0.10.14",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.5.2",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
