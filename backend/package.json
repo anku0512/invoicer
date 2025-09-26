@@ -2,7 +2,7 @@
   "name": "invoicer-backend",
   "version": "1.0.0",
   "description": "Backend cron service for invoice processing",
-  "main": "dist/index.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
