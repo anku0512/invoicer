@@ -47,20 +47,13 @@ export function setUserToken(token: string) {
 }
 
 export function getGoogleAuth() {
-  // If we have a user token, create a custom auth object
+  // If we have a user token, create a proper OAuth2 client
   if (currentUserToken) {
     console.log('🔍 Debug: Using user Firebase token for Google Sheets');
-    return {
-      getRequestHeaders: () => ({
-        'Authorization': `Bearer ${currentUserToken}`
-      }),
-      request: async (opts: any) => {
-        const { google } = await import('googleapis');
-        const auth = new google.auth.OAuth2();
-        auth.setCredentials({ access_token: currentUserToken });
-        return auth.request(opts);
-      }
-    };
+    const { google } = require('googleapis');
+    const auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: currentUserToken });
+    return auth;
   }
   
   // If we have a user auth, use that; otherwise fall back to service account
