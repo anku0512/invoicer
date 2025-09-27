@@ -39,6 +39,9 @@ export function useAuth() {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       
       if (credential?.accessToken) {
+        // Get the actual Google OAuth token from the user
+        const googleToken = await result.user.getIdToken();
+        
         // Store user data in Firestore
         const userData: UserData = {
           uid: result.user.uid,
@@ -46,7 +49,8 @@ export function useAuth() {
           displayName: result.user.displayName || '',
           sheetId: '',
           emailLabel: '',
-          accessToken: credential.accessToken,
+          accessToken: credential.accessToken, // Keep the original access token
+          googleToken: googleToken, // Add the Google ID token
           tokenExpiry: Date.now() + (3600 * 1000), // 1 hour from now
           createdAt: new Date(),
           isActive: true

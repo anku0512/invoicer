@@ -35,12 +35,34 @@ const SCOPES = [
 
 // Store the current user's auth client
 let currentUserAuth: OAuth2Client | null = null;
+let currentUserToken: string | null = null;
 
 export function setUserAuth(auth: OAuth2Client) {
   currentUserAuth = auth;
 }
 
+export function setUserToken(token: string) {
+  currentUserToken = token;
+  console.log('🔍 Debug: Set user token for direct API calls');
+}
+
 export function getGoogleAuth() {
+  // If we have a user token, create a custom auth object
+  if (currentUserToken) {
+    console.log('🔍 Debug: Using user Firebase token for Google Sheets');
+    return {
+      getRequestHeaders: () => ({
+        'Authorization': `Bearer ${currentUserToken}`
+      }),
+      request: async (opts: any) => {
+        const { google } = await import('googleapis');
+        const auth = new google.auth.OAuth2();
+        auth.setCredentials({ access_token: currentUserToken });
+        return auth.request(opts);
+      }
+    };
+  }
+  
   // If we have a user auth, use that; otherwise fall back to service account
   if (currentUserAuth) {
     console.log('🔍 Debug: Using user OAuth authentication for Google Sheets');

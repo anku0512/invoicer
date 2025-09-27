@@ -24,6 +24,9 @@ const DriveUrlProcessor: React.FC = () => {
     setResult(null);
 
     try {
+      console.log('🔍 Debug: Sending request with access token length:', userData.accessToken?.length);
+      console.log('🔍 Debug: Access token starts with:', userData.accessToken?.substring(0, 20) + '...');
+      
       const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/process-url', {
         method: 'POST',
         headers: {

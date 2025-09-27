@@ -8,7 +8,7 @@ import { uploadToLlamaParse, pollJob, getMarkdown } from './ingest/llamaparse';
 import { normalizeMarkdown, normalizeMarkdownBatch } from './ai/normalize';
 import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
 import { Accumulator } from './core/accumulator';
-import { setUserAuth } from './google/auth';
+import { setUserAuth, setUserToken } from './google/auth';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -16,18 +16,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Helper function to process a single Drive file
-async function processSingleDriveFile(fileId: string, sheetId: string, auth?: OAuth2Client): Promise<void> {
+async function processSingleDriveFile(fileId: string, sheetId: string): Promise<void> {
   console.log(`Processing Drive file: ${fileId}`);
   
   try {
-    // Set user auth if provided
-    if (auth) {
-      setUserAuth(auth);
-      console.log('🔍 Debug: Using user OAuth authentication');
-    } else {
-      console.log('🔍 Debug: Using service account authentication');
-    }
-    
     // Prepare temporary directory
     await prepareTmp();
     
@@ -361,21 +353,14 @@ app.post('/api/process-url', async (req, res) => {
     const fileId = fileIdMatch[1];
     console.log(`Extracted file ID: ${fileId}`);
     
-    // Create OAuth client from access token if provided
-    let oauthClient: OAuth2Client | undefined;
+    // Set user token for direct API calls if provided
     if (accessToken) {
-      try {
-        oauthClient = new OAuth2Client();
-        oauthClient.setCredentials({
-          access_token: accessToken,
-          // Add refresh token if available
-          // refresh_token: refreshToken
-        });
-        console.log('🔍 Debug: Created OAuth client from access token');
-      } catch (error) {
-        console.error('🔍 Debug: Failed to create OAuth client:', error);
-        // Continue without OAuth client, will fall back to service account
-      }
+      console.log('🔍 Debug: Setting user token for direct API calls');
+      console.log('🔍 Debug: Access token length:', accessToken.length);
+      console.log('🔍 Debug: Access token starts with:', accessToken.substring(0, 20) + '...');
+      setUserToken(accessToken);
+    } else {
+      console.log('🔍 Debug: No access token provided, will use service account');
     }
     
     // Set the user's sheet ID in environment for processing
@@ -389,7 +374,7 @@ app.post('/api/process-url', async (req, res) => {
   
   try {
     // Process the file using LlamaParse and your existing logic
-    await processSingleDriveFile(fileId, sheetId, oauthClient);
+    await processSingleDriveFile(fileId, sheetId);
       
       console.log('Drive URL processing completed successfully');
       res.status(200).json({ 

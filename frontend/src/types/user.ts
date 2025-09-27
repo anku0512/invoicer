@@ -6,6 +6,7 @@ export interface UserData {
   emailLabel: string;
   refreshToken?: string;
   accessToken?: string;
+  googleToken?: string;
   tokenExpiry?: number;
   createdAt: Date;
   lastProcessed?: Date;
