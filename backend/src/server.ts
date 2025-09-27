@@ -311,18 +311,25 @@ app.get('/api/oauth/callback', async (req, res) => {
     const { code, state } = req.query;
     
     console.log('🔍 Debug: OAuth callback received');
+    console.log('🔍 Debug: Full query params:', req.query);
     console.log('🔍 Debug: Code:', code ? 'Present' : 'Missing');
     console.log('🔍 Debug: State:', state);
+    console.log('🔍 Debug: State type:', typeof state);
     
     if (!code) {
       return res.status(400).json({ error: 'Authorization code not provided' });
     }
     
-    if (!state) {
-      return res.status(400).json({ error: 'Firebase UID not provided in state' });
+    // Handle case where state might be undefined or empty
+    let firebaseUid = state as string;
+    if (!firebaseUid || firebaseUid === 'undefined' || firebaseUid === 'unknown') {
+      console.log('🔍 Debug: Invalid or missing state, cannot proceed');
+      return res.status(400).json({ 
+        error: 'Firebase UID not provided in OAuth state',
+        message: 'Please try the OAuth flow again from the beginning'
+      });
     }
     
-    const firebaseUid = state as string;
     console.log('🔍 Debug: Processing OAuth for Firebase UID:', firebaseUid);
     
     await handleOAuthCallback(code as string, firebaseUid);

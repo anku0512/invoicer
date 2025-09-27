@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 const GoogleOAuthSetup: React.FC = () => {
@@ -7,25 +7,34 @@ const GoogleOAuthSetup: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
-  const getOAuthUrl = async () => {
+  const getOAuthUrl = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
       
-      const response = await fetch(`https://invoicer-backend-euxq.onrender.com/api/oauth/url?firebaseUid=${userData?.uid}`);
+      if (!userData?.uid) {
+        setError('User not authenticated. Please log in first.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('🔍 Debug: Getting OAuth URL for Firebase UID:', userData.uid);
+      const response = await fetch(`https://invoicer-backend-euxq.onrender.com/api/oauth/url?firebaseUid=${encodeURIComponent(userData.uid)}`);
       const data = await response.json();
       
+      console.log('🔍 Debug: OAuth URL response:', data);
       if (data.authUrl) {
         setAuthUrl(data.authUrl);
       } else {
         setError('Failed to get OAuth URL');
       }
     } catch (err) {
+      console.error('🔍 Debug: Error getting OAuth URL:', err);
       setError('Failed to connect to backend');
     } finally {
       setLoading(false);
     }
-  };
+  }, [userData?.uid]);
 
   const handleOAuthClick = () => {
     if (authUrl) {
@@ -35,7 +44,7 @@ const GoogleOAuthSetup: React.FC = () => {
 
   useEffect(() => {
     getOAuthUrl();
-  }, []);
+  }, [getOAuthUrl]);
 
   return (
     <div className="max-w-md mx-auto bg-white shadow rounded-lg p-6">
@@ -47,6 +56,12 @@ const GoogleOAuthSetup: React.FC = () => {
         <p className="text-sm text-gray-600">
           To process Google Drive files and write to Google Sheets, you need to authorize access to your Google account.
         </p>
+        
+        <div className="p-2 bg-gray-50 rounded text-xs">
+          <p><strong>Debug Info:</strong></p>
+          <p>Firebase UID: {userData?.uid || 'Not available'}</p>
+          <p>User Email: {userData?.email || 'Not available'}</p>
+        </div>
         
         {error && (
           <div className="p-3 bg-red-50 rounded-md">

@@ -71,12 +71,15 @@ export function setUserToken(token: string) {
 
 // Generate Google OAuth URL
 export function getGoogleOAuthURL(firebaseUid?: string): string {
-  return oauth2Client.generateAuthUrl({
+  console.log('🔍 Debug: getGoogleOAuthURL called with firebaseUid:', firebaseUid);
+  const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
     state: firebaseUid || 'unknown',
   });
+  console.log('🔍 Debug: Generated auth URL with state:', firebaseUid || 'unknown');
+  return authUrl;
 }
 
 // Handle OAuth callback and store refresh token
