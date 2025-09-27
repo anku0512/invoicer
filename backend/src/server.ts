@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { OAuth2Client } from 'google-auth-library';
 import { EmailChecker } from './cron/emailChecker';
 import { downloadDriveFile } from './google/drive';
 import { prepareTmp, isZip, writeZipAndExtract } from './ingest/fileHandler';
@@ -7,6 +8,7 @@ import { uploadToLlamaParse, pollJob, getMarkdown } from './ingest/llamaparse';
 import { normalizeMarkdown, normalizeMarkdownBatch } from './ai/normalize';
 import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
 import { Accumulator } from './core/accumulator';
+import { setUserAuth } from './google/auth';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -14,10 +16,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Helper function to process a single Drive file
-async function processSingleDriveFile(fileId: string, sheetId: string): Promise<void> {
+async function processSingleDriveFile(fileId: string, sheetId: string, auth?: OAuth2Client): Promise<void> {
   console.log(`Processing Drive file: ${fileId}`);
   
   try {
+    // Set user auth if provided
+    if (auth) {
+      setUserAuth(auth);
+      console.log('🔍 Debug: Using user OAuth authentication');
+    } else {
+      console.log('🔍 Debug: Using service account authentication');
+    }
+    
     // Prepare temporary directory
     await prepareTmp();
     
@@ -328,7 +338,7 @@ app.get('/trigger', async (req, res) => {
 // Process single Drive URL endpoint
 app.post('/api/process-url', async (req, res) => {
   try {
-    const { driveUrl, sheetId } = req.body;
+    const { driveUrl, sheetId, accessToken } = req.body;
     
     if (!driveUrl || !sheetId) {
       return res.status(400).json({ 
@@ -351,18 +361,35 @@ app.post('/api/process-url', async (req, res) => {
     const fileId = fileIdMatch[1];
     console.log(`Extracted file ID: ${fileId}`);
     
-      // Set the user's sheet ID in environment for processing
-      const originalTargetSheetId = process.env.TARGET_SHEET_ID;
-      const originalSourceSheetId = process.env.SOURCE_SHEET_ID;
-      process.env.TARGET_SHEET_ID = sheetId;
-      process.env.SOURCE_SHEET_ID = sheetId;
-      
-      console.log(`Using user's sheet ID: ${sheetId}`);
-      console.log(`Environment TARGET_SHEET_ID: ${process.env.TARGET_SHEET_ID}`);
+    // Create OAuth client from access token if provided
+    let oauthClient: OAuth2Client | undefined;
+    if (accessToken) {
+      try {
+        oauthClient = new OAuth2Client();
+        oauthClient.setCredentials({
+          access_token: accessToken,
+          // Add refresh token if available
+          // refresh_token: refreshToken
+        });
+        console.log('🔍 Debug: Created OAuth client from access token');
+      } catch (error) {
+        console.error('🔍 Debug: Failed to create OAuth client:', error);
+        // Continue without OAuth client, will fall back to service account
+      }
+    }
     
-    try {
-      // Process the file using LlamaParse and your existing logic
-      await processSingleDriveFile(fileId, sheetId);
+    // Set the user's sheet ID in environment for processing
+    const originalTargetSheetId = process.env.TARGET_SHEET_ID;
+    const originalSourceSheetId = process.env.SOURCE_SHEET_ID;
+    process.env.TARGET_SHEET_ID = sheetId;
+    process.env.SOURCE_SHEET_ID = sheetId;
+    
+    console.log(`Using user's sheet ID: ${sheetId}`);
+    console.log(`Environment TARGET_SHEET_ID: ${process.env.TARGET_SHEET_ID}`);
+  
+  try {
+    // Process the file using LlamaParse and your existing logic
+    await processSingleDriveFile(fileId, sheetId, oauthClient);
       
       console.log('Drive URL processing completed successfully');
       res.status(200).json({ 

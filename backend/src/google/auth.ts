@@ -43,8 +43,11 @@ export function setUserAuth(auth: OAuth2Client) {
 export function getGoogleAuth() {
   // If we have a user auth, use that; otherwise fall back to service account
   if (currentUserAuth) {
+    console.log('🔍 Debug: Using user OAuth authentication for Google Sheets');
     return currentUserAuth;
   }
+  
+  console.log('🔍 Debug: No user auth available, falling back to service account');
   
   // Check if service account credentials are available
   if (!env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {

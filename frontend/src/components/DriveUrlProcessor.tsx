@@ -31,7 +31,8 @@ const DriveUrlProcessor: React.FC = () => {
         },
         body: JSON.stringify({
           driveUrl: driveUrl.trim(),
-          sheetId: userData.sheetId
+          sheetId: userData.sheetId,
+          accessToken: userData.accessToken
         }),
       });
 
