@@ -1,6 +1,9 @@
 import { google } from 'googleapis';
 import { env } from '../config/env';
 import { OAuth2Client } from 'google-auth-library';
+import { getFirestore } from 'firebase-admin/firestore';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 
 // Helper function to properly format private key for different environments
 function formatPrivateKey(privateKey: string): string {
@@ -33,6 +36,26 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
 ];
 
+// Initialize Firebase Admin if not already initialized
+function initializeFirebaseAdmin() {
+  if (getApps().length === 0) {
+    initializeApp({
+      credential: require('firebase-admin').credential.cert({
+        projectId: env.FIREBASE_PROJECT_ID,
+        privateKey: env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        clientEmail: env.FIREBASE_CLIENT_EMAIL,
+      }),
+    });
+  }
+}
+
+// Google OAuth2 configuration
+const oauth2Client = new OAuth2Client(
+  env.GOOGLE_CLIENT_ID,
+  env.GOOGLE_CLIENT_SECRET,
+  `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/oauth/callback`
+);
+
 // Store the current user's auth client
 let currentUserAuth: OAuth2Client | null = null;
 let currentUserToken: string | null = null;
@@ -46,16 +69,107 @@ export function setUserToken(token: string) {
   console.log('🔍 Debug: Set user token for direct API calls');
 }
 
-export function getGoogleAuth() {
-  // If we have a user token, create a proper OAuth2 client
-  if (currentUserToken) {
-    console.log('🔍 Debug: Using user Firebase token for Google Sheets');
-    const { google } = require('googleapis');
-    const auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: currentUserToken });
-    return auth;
+// Generate Google OAuth URL
+export function getGoogleOAuthURL(): string {
+  return oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: SCOPES,
+  });
+}
+
+// Handle OAuth callback and store refresh token
+export async function handleOAuthCallback(code: string, firebaseUid: string): Promise<void> {
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    
+    if (!tokens.refresh_token) {
+      throw new Error('No refresh token received from Google OAuth');
+    }
+    
+    // Initialize Firebase Admin
+    initializeFirebaseAdmin();
+    const db = getFirestore();
+    
+    // Store refresh token in Firestore
+    await db.collection('user_tokens').doc(firebaseUid).set({
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token,
+      expiryDate: tokens.expiry_date,
+      updatedAt: new Date(),
+    });
+    
+    console.log(`🔍 Debug: Stored refresh token for user ${firebaseUid}`);
+  } catch (error) {
+    console.error('🔍 Debug: Failed to handle OAuth callback:', error);
+    throw error;
   }
-  
+}
+
+// Get OAuth2Client for a specific user
+export async function getUserOAuthClient(firebaseUid: string): Promise<OAuth2Client | null> {
+  try {
+    // Initialize Firebase Admin
+    initializeFirebaseAdmin();
+    const db = getFirestore();
+    
+    // Get user's tokens from Firestore
+    const tokenDoc = await db.collection('user_tokens').doc(firebaseUid).get();
+    
+    if (!tokenDoc.exists) {
+      console.log(`🔍 Debug: No tokens found for user ${firebaseUid}`);
+      return null;
+    }
+    
+    const tokenData = tokenDoc.data();
+    if (!tokenData?.refreshToken) {
+      console.log(`🔍 Debug: No refresh token found for user ${firebaseUid}`);
+      return null;
+    }
+    
+    // Create OAuth2Client with stored refresh token
+    const userOAuthClient = new OAuth2Client(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET,
+      `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/oauth/callback`
+    );
+    
+    userOAuthClient.setCredentials({
+      refresh_token: tokenData.refreshToken,
+      access_token: tokenData.accessToken,
+      expiry_date: tokenData.expiryDate,
+    });
+    
+    console.log(`🔍 Debug: Created OAuth2Client for user ${firebaseUid}`);
+    return userOAuthClient;
+  } catch (error) {
+    console.error(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error);
+    return null;
+  }
+}
+
+// Verify user has access to a specific sheet
+export async function verifySheetAccess(firebaseUid: string, sheetId: string): Promise<boolean> {
+  try {
+    const userOAuthClient = await getUserOAuthClient(firebaseUid);
+    if (!userOAuthClient) {
+      return false;
+    }
+    
+    const sheets = google.sheets({ version: 'v4', auth: userOAuthClient });
+    
+    // Try to get sheet info to verify access
+    await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    
+    console.log(`🔍 Debug: User ${firebaseUid} has access to sheet ${sheetId}`);
+    return true;
+  } catch (error) {
+    console.error(`🔍 Debug: User ${firebaseUid} does not have access to sheet ${sheetId}:`, error);
+    return false;
+  }
+}
+
+export function getGoogleAuth() {
   // If we have a user auth, use that; otherwise fall back to service account
   if (currentUserAuth) {
     console.log('🔍 Debug: Using user OAuth authentication for Google Sheets');

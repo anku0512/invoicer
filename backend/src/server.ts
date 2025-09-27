@@ -8,7 +8,7 @@ import { uploadToLlamaParse, pollJob, getMarkdown } from './ingest/llamaparse';
 import { normalizeMarkdown, normalizeMarkdownBatch } from './ai/normalize';
 import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
 import { Accumulator } from './core/accumulator';
-import { setUserAuth, setUserToken } from './google/auth';
+import { setUserAuth, setUserToken, getGoogleOAuthURL, handleOAuthCallback, getUserOAuthClient, verifySheetAccess } from './google/auth';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -292,6 +292,47 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Google OAuth endpoints
+app.get('/api/oauth/url', (req, res) => {
+  try {
+    const authUrl = getGoogleOAuthURL();
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Error generating OAuth URL:', error);
+    res.status(500).json({ error: 'Failed to generate OAuth URL' });
+  }
+});
+
+app.get('/api/oauth/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code not provided' });
+    }
+    
+    if (!state) {
+      return res.status(400).json({ error: 'Firebase UID not provided in state' });
+    }
+    
+    const firebaseUid = state as string;
+    
+    await handleOAuthCallback(code as string, firebaseUid);
+    
+    res.json({ 
+      success: true, 
+      message: 'Google OAuth completed successfully',
+      firebaseUid 
+    });
+  } catch (error) {
+    console.error('OAuth callback error:', error);
+    res.status(500).json({ 
+      error: 'OAuth callback failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Manual trigger endpoint with simple UI
 app.get('/trigger', async (req, res) => {
   try {
@@ -330,12 +371,19 @@ app.get('/trigger', async (req, res) => {
 // Process single Drive URL endpoint
 app.post('/api/process-url', async (req, res) => {
   try {
-    const { driveUrl, sheetId, accessToken } = req.body;
+    const { driveUrl, sheetId, firebaseUid } = req.body;
     
     if (!driveUrl || !sheetId) {
       return res.status(400).json({ 
         success: false, 
         error: 'driveUrl and sheetId are required' 
+      });
+    }
+    
+    if (!firebaseUid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'firebaseUid is required' 
       });
     }
 
@@ -353,15 +401,28 @@ app.post('/api/process-url', async (req, res) => {
     const fileId = fileIdMatch[1];
     console.log(`Extracted file ID: ${fileId}`);
     
-    // Set user token for direct API calls if provided
-    if (accessToken) {
-      console.log('🔍 Debug: Setting user token for direct API calls');
-      console.log('🔍 Debug: Access token length:', accessToken.length);
-      console.log('🔍 Debug: Access token starts with:', accessToken.substring(0, 20) + '...');
-      setUserToken(accessToken);
-    } else {
-      console.log('🔍 Debug: No access token provided, will use service account');
+    // Get user's OAuth client
+    const userOAuthClient = await getUserOAuthClient(firebaseUid);
+    if (!userOAuthClient) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User not authenticated with Google. Please complete OAuth flow first.',
+        authUrl: getGoogleOAuthURL()
+      });
     }
+    
+    // Verify user has access to the target sheet
+    const hasAccess = await verifySheetAccess(firebaseUid, sheetId);
+    if (!hasAccess) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'User does not have access to the specified Google Sheet. Please ensure the sheet is shared with your Google account.'
+      });
+    }
+    
+    // Set user auth for this request
+    setUserAuth(userOAuthClient);
+    console.log('🔍 Debug: Using user OAuth client for Google Sheets operations');
     
     // Set the user's sheet ID in environment for processing
     const originalTargetSheetId = process.env.TARGET_SHEET_ID;

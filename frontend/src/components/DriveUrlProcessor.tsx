@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import GoogleOAuthSetup from './GoogleOAuthSetup';
 
 const DriveUrlProcessor: React.FC = () => {
   const { userData } = useAuth();
   const [driveUrl, setDriveUrl] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; message: string; needsOAuth?: boolean; authUrl?: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,8 +25,7 @@ const DriveUrlProcessor: React.FC = () => {
     setResult(null);
 
     try {
-      console.log('🔍 Debug: Sending request with access token length:', userData.accessToken?.length);
-      console.log('🔍 Debug: Access token starts with:', userData.accessToken?.substring(0, 20) + '...');
+      console.log('🔍 Debug: Sending request with Firebase UID:', userData.uid);
       
       const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/process-url', {
         method: 'POST',
@@ -35,7 +35,7 @@ const DriveUrlProcessor: React.FC = () => {
         body: JSON.stringify({
           driveUrl: driveUrl.trim(),
           sheetId: userData.sheetId,
-          accessToken: userData.accessToken
+          firebaseUid: userData.uid
         }),
       });
 
@@ -45,7 +45,16 @@ const DriveUrlProcessor: React.FC = () => {
         setResult({ success: true, message: 'Drive URL processed successfully!' });
         setDriveUrl(''); // Clear the input
       } else {
-        setResult({ success: false, message: data.error || 'Processing failed' });
+        if (data.error?.includes('not authenticated with Google')) {
+          setResult({ 
+            success: false, 
+            message: 'Google OAuth required. Please complete the authorization first.',
+            needsOAuth: true,
+            authUrl: data.authUrl
+          });
+        } else {
+          setResult({ success: false, message: data.error || 'Processing failed' });
+        }
       }
     } catch (error) {
       setResult({ 
@@ -98,6 +107,11 @@ const DriveUrlProcessor: React.FC = () => {
             : 'bg-red-50 text-red-700'
         }`}>
           <p className="text-sm">{result.message}</p>
+          {result.needsOAuth && (
+            <div className="mt-3">
+              <GoogleOAuthSetup />
+            </div>
+          )}
         </div>
       )}
 
