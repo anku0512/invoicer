@@ -2,6 +2,32 @@ import { google } from 'googleapis';
 import { env } from '../config/env';
 import { OAuth2Client } from 'google-auth-library';
 
+// Helper function to properly format private key for different environments
+function formatPrivateKey(privateKey: string): string {
+  // Remove any extra whitespace
+  let formatted = privateKey.trim();
+  
+  // Replace escaped newlines with actual newlines
+  formatted = formatted.replace(/\\n/g, '\n');
+  
+  // Ensure proper line breaks in the key
+  if (!formatted.includes('\n')) {
+    // If no newlines, try to add them at appropriate places
+    formatted = formatted.replace(/(-----BEGIN PRIVATE KEY-----)/, '$1\n');
+    formatted = formatted.replace(/(-----END PRIVATE KEY-----)/, '\n$1');
+    // Add newlines every 64 characters in the key body
+    const keyBody = formatted.match(/-----BEGIN PRIVATE KEY-----\n?(.*?)\n?-----END PRIVATE KEY-----/s);
+    if (keyBody) {
+      const keyContent = keyBody[1].replace(/\s/g, ''); // Remove all whitespace
+      const lines = keyContent.match(/.{1,64}/g) || [];
+      const formattedKeyBody = lines.join('\n');
+      formatted = `-----BEGIN PRIVATE KEY-----\n${formattedKeyBody}\n-----END PRIVATE KEY-----`;
+    }
+  }
+  
+  return formatted;
+}
+
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets',
@@ -26,14 +52,25 @@ export function getGoogleAuth() {
   }
   
   try {
+    // Format the private key properly for the deployment environment
+    const formattedPrivateKey = formatPrivateKey(env.GOOGLE_PRIVATE_KEY);
+    
+    console.log('🔍 Debug: Private key formatted successfully');
+    
     const jwt = new google.auth.JWT({
       email: env.GOOGLE_CLIENT_EMAIL,
-      key: env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      key: formattedPrivateKey,
       scopes: SCOPES,
     });
     return jwt;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to create Google auth:', error);
+    if (error.message && (error.message.includes('unsupported') || error.message.includes('DECODER'))) {
+      console.error('💡 Private key format issue detected. Check:');
+      console.error('1. Private key should have proper newlines');
+      console.error('2. Private key should not have extra spaces or characters');
+      console.error('3. Private key should be properly escaped in environment variables');
+    }
     throw error;
   }
 }
