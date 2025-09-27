@@ -70,11 +70,12 @@ export function setUserToken(token: string) {
 }
 
 // Generate Google OAuth URL
-export function getGoogleOAuthURL(): string {
+export function getGoogleOAuthURL(firebaseUid?: string): string {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
+    state: firebaseUid || 'unknown',
   });
 }
 

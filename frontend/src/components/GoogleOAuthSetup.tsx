@@ -12,11 +12,11 @@ const GoogleOAuthSetup: React.FC = () => {
       setLoading(true);
       setError('');
       
-      const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/oauth/url');
+      const response = await fetch(`https://invoicer-backend-euxq.onrender.com/api/oauth/url?firebaseUid=${userData?.uid}`);
       const data = await response.json();
       
       if (data.authUrl) {
-        setAuthUrl(data.authUrl + `&state=${userData?.uid}`);
+        setAuthUrl(data.authUrl);
       } else {
         setError('Failed to get OAuth URL');
       }

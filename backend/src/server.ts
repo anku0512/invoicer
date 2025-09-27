@@ -295,7 +295,10 @@ app.get('/health', (req, res) => {
 // Google OAuth endpoints
 app.get('/api/oauth/url', (req, res) => {
   try {
-    const authUrl = getGoogleOAuthURL();
+    const { firebaseUid } = req.query;
+    console.log('🔍 Debug: Generating OAuth URL for Firebase UID:', firebaseUid);
+    const authUrl = getGoogleOAuthURL(firebaseUid as string);
+    console.log('🔍 Debug: Generated OAuth URL:', authUrl);
     res.json({ authUrl });
   } catch (error) {
     console.error('Error generating OAuth URL:', error);
@@ -307,6 +310,10 @@ app.get('/api/oauth/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
     
+    console.log('🔍 Debug: OAuth callback received');
+    console.log('🔍 Debug: Code:', code ? 'Present' : 'Missing');
+    console.log('🔍 Debug: State:', state);
+    
     if (!code) {
       return res.status(400).json({ error: 'Authorization code not provided' });
     }
@@ -316,6 +323,7 @@ app.get('/api/oauth/callback', async (req, res) => {
     }
     
     const firebaseUid = state as string;
+    console.log('🔍 Debug: Processing OAuth for Firebase UID:', firebaseUid);
     
     await handleOAuthCallback(code as string, firebaseUid);
     
