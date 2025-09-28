@@ -75,13 +75,13 @@ async function ensureHeaderRow(spreadsheetId: string, tab: string, headers: stri
   const res = await sheetsApi.spreadsheets.values.get({ auth, spreadsheetId, range });
   const existing = res.data.values?.[0] ?? [];
   if (existing.length === 0) {
-    await sheetsApi.spreadsheets.values.update({
-      auth,
-      spreadsheetId,
-      range,
-      valueInputOption: 'RAW',
-      requestBody: { values: [headers] },
-    });
+      await sheetsApi.spreadsheets.values.update({
+        auth,
+        spreadsheetId,
+        range,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [headers] },
+      });
   }
 }
 
@@ -197,7 +197,7 @@ export async function upsertInvoices(invoices: Record<string,string>[], sheetId?
         auth,
         spreadsheetId,
         requestBody: {
-          valueInputOption: 'RAW',
+          valueInputOption: 'USER_ENTERED',
           data: updates,
         },
       });
@@ -215,7 +215,7 @@ export async function upsertInvoices(invoices: Record<string,string>[], sheetId?
         auth,
         spreadsheetId,
         range: `${tab}!A1`,
-        valueInputOption: 'RAW',
+        valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: { values: appends },
       });
@@ -267,7 +267,7 @@ export async function appendLineItems(lines: Record<string,string>[], sheetId?: 
     auth,
     spreadsheetId,
     range: `${linesTab}!A1`,
-    valueInputOption: 'RAW',
+    valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: lines.map(line => LINE_HEADERS.map(h => line[h] ?? '')) },
   });

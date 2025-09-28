@@ -200,7 +200,20 @@ export class WorkflowService {
         throw new Error('User authentication required. Please complete Google OAuth flow first.');
       }
       
-      // Get files from the folder using user's OAuth client
+      const allFiles: any[] = [];
+      await this.recursivelyGetFiles(folderId, userAuth, allFiles);
+      
+      console.log(`Found ${allFiles.length} total files (including nested folders and zip contents)`);
+      return allFiles;
+    } catch (error: any) {
+      console.error('Error fetching drive folder files:', error.message);
+      throw new Error(`Failed to fetch drive folder files: ${error.message}`);
+    }
+  }
+
+  private async recursivelyGetFiles(folderId: string, userAuth: any, allFiles: any[]): Promise<void> {
+    try {
+      // Get files and folders from the current folder
       const response = await this.driveApi.files.list({
         auth: userAuth,
         q: `'${folderId}' in parents and trashed=false`,
@@ -208,13 +221,92 @@ export class WorkflowService {
         orderBy: 'modifiedTime desc'
       });
 
-      const files = response.data.files || [];
-      console.log(`Found ${files.length} files in folder ${folderId}`);
-      
-      return files;
+      const items = response.data.files || [];
+      console.log(`Found ${items.length} items in folder ${folderId}`);
+
+      for (const item of items) {
+        const mimeType = item.mimeType || '';
+        
+        // Check if it's a folder
+        if (mimeType === 'application/vnd.google-apps.folder') {
+          console.log(`Found folder: ${item.name}, recursively processing...`);
+          await this.recursivelyGetFiles(item.id!, userAuth, allFiles);
+        }
+        // Check if it's a zip file
+        else if (mimeType === 'application/zip' || item.name?.toLowerCase().endsWith('.zip')) {
+          console.log(`Found zip file: ${item.name}, extracting contents...`);
+          await this.processZipFile(item, userAuth, allFiles);
+        }
+        // Check if it's a supported file type
+        else if (this.isSupportedFileType(item)) {
+          console.log(`Found supported file: ${item.name}`);
+          allFiles.push(item);
+        }
+        else {
+          console.log(`Skipping unsupported file: ${item.name} (${mimeType})`);
+        }
+      }
     } catch (error: any) {
-      console.error('Error fetching drive folder files:', error.message);
-      throw new Error(`Failed to fetch drive folder files: ${error.message}`);
+      console.error(`Error processing folder ${folderId}:`, error.message);
+      // Continue processing other folders even if one fails
+    }
+  }
+
+  private async processZipFile(zipFile: any, userAuth: any, allFiles: any[]): Promise<void> {
+    try {
+      // Download the zip file
+      const fileData = await downloadDriveFile(zipFile.id!, userAuth);
+      
+      // Extract zip contents
+      const extractedResult = await writeZipAndExtract(fileData.buffer);
+      
+      console.log(`Extracted ${extractedResult.files.length} files from zip: ${zipFile.name}`);
+      
+      // Add extracted files to the list
+      for (const extractedFile of extractedResult.files) {
+        // Create a virtual file object for the extracted file
+        const virtualFile = {
+          id: `extracted_${zipFile.id}_${extractedFile.fileName}`,
+          name: extractedFile.fileName,
+          mimeType: this.getMimeTypeFromFileName(extractedFile.fileName),
+          size: extractedFile.filePath ? require('fs').statSync(extractedFile.filePath).size : 0,
+          createdTime: zipFile.createdTime,
+          modifiedTime: zipFile.modifiedTime,
+          webViewLink: zipFile.webViewLink,
+          isExtracted: true,
+          originalZipId: zipFile.id,
+          filePath: extractedFile.filePath
+        };
+        
+        allFiles.push(virtualFile);
+        console.log(`Added extracted file: ${extractedFile.fileName}`);
+      }
+    } catch (error: any) {
+      console.error(`Error processing zip file ${zipFile.name}:`, error.message);
+      // Continue processing other files even if zip extraction fails
+    }
+  }
+
+  private isSupportedFileType(file: any): boolean {
+    const mimeType = file.mimeType || '';
+    const fileName = file.name || '';
+    
+    return mimeType.includes('pdf') || 
+           mimeType.includes('image') || 
+           fileName.toLowerCase().endsWith('.pdf') ||
+           fileName.toLowerCase().endsWith('.png') ||
+           fileName.toLowerCase().endsWith('.jpg') ||
+           fileName.toLowerCase().endsWith('.jpeg');
+  }
+
+  private getMimeTypeFromFileName(fileName: string): string {
+    const ext = fileName.toLowerCase().split('.').pop();
+    switch (ext) {
+      case 'pdf': return 'application/pdf';
+      case 'png': return 'image/png';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      default: return 'application/octet-stream';
     }
   }
 
@@ -225,22 +317,9 @@ export class WorkflowService {
     try {
       const files = await this.getDriveFolderFiles(folderId, firebaseUid, userAuth);
       
-      // Filter for supported file types
-      const supportedFiles = files.filter(file => {
-        const mimeType = file.mimeType || '';
-        return mimeType.includes('pdf') || 
-               mimeType.includes('image') || 
-               mimeType.includes('application/zip') ||
-               file.name?.toLowerCase().endsWith('.pdf') ||
-               file.name?.toLowerCase().endsWith('.png') ||
-               file.name?.toLowerCase().endsWith('.jpg') ||
-               file.name?.toLowerCase().endsWith('.jpeg') ||
-               file.name?.toLowerCase().endsWith('.zip');
-      });
+      console.log(`Found ${files.length} files to process`);
 
-      console.log(`Found ${supportedFiles.length} supported files to process`);
-
-      if (supportedFiles.length === 0) {
+      if (files.length === 0) {
         return { success: true, processedFiles: 0, skippedFiles: 0 };
       }
 
@@ -248,7 +327,7 @@ export class WorkflowService {
       const filesToProcess = [];
       let skippedCount = 0;
 
-      for (const file of supportedFiles) {
+      for (const file of files) {
         const isProcessed = await this.fileTrackingService.isFileProcessed(firebaseUid, file.id!);
         if (isProcessed) {
           console.log(`Skipping already processed file: ${file.name} (${file.id})`);
@@ -286,7 +365,7 @@ export class WorkflowService {
           );
 
           // Process the file using existing logic
-          await this.processSingleFile(file.id!, sheetId, acc, userAuth);
+          await this.processSingleFile(file.id!, sheetId, acc, userAuth, file);
           
           // Mark file as completed
           await this.fileTrackingService.markFileCompleted(firebaseUid, file.id!);
@@ -330,22 +409,30 @@ export class WorkflowService {
   /**
    * Process a single file using the existing parsing logic
    */
-  private async processSingleFile(fileId: string, sheetId: string, acc: Accumulator, userAuth: any): Promise<void> {
+  private async processSingleFile(fileId: string, sheetId: string, acc: Accumulator, userAuth: any, file?: any): Promise<void> {
     try {
-      // Download file from Google Drive using user's OAuth client
-      const fileData = await downloadDriveFile(fileId, userAuth);
-      
-      // Check if it's a zip file and extract if needed
       let filesToProcess: { buffer: Buffer; fileName: string }[] = [];
-      if (isZip(fileData.fileName)) {
-        console.log('File is a zip, extracting...');
-        const extractedResult = await writeZipAndExtract(fileData.buffer);
-        filesToProcess = extractedResult.files.map(f => ({
-          buffer: fs.readFileSync(f.filePath),
-          fileName: f.fileName
-        }));
+      
+      // Check if this is an extracted file from a zip
+      if (file?.isExtracted && file?.filePath) {
+        console.log(`Processing extracted file: ${file.name}`);
+        const buffer = fs.readFileSync(file.filePath);
+        filesToProcess = [{ buffer, fileName: file.name }];
       } else {
-        filesToProcess = [fileData];
+        // Download file from Google Drive using user's OAuth client
+        const fileData = await downloadDriveFile(fileId, userAuth);
+        
+        // Check if it's a zip file and extract if needed
+        if (isZip(fileData.fileName)) {
+          console.log('File is a zip, extracting...');
+          const extractedResult = await writeZipAndExtract(fileData.buffer);
+          filesToProcess = extractedResult.files.map(f => ({
+            buffer: fs.readFileSync(f.filePath),
+            fileName: f.fileName
+          }));
+        } else {
+          filesToProcess = [fileData];
+        }
       }
       
       console.log(`Files to process: ${filesToProcess.length}`);
