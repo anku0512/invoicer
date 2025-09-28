@@ -873,6 +873,264 @@ app.get('/api/cron', async (req, res) => {
   }
 });
 
+// Workflow CRUD API endpoints
+import { db } from './firebase/admin';
+
+// Get all workflows for a user
+app.get('/api/workflows', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Authorization header required' 
+      });
+    }
+
+    const firebaseUid = authHeader.split(' ')[1];
+    if (!firebaseUid) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid authorization token' 
+      });
+    }
+
+    console.log(`Fetching workflows for user: ${firebaseUid}`);
+    
+    const workflowsRef = db.collection('workflows').where('uid', '==', firebaseUid);
+    const snapshot = await workflowsRef.get();
+    
+    console.log(`Found ${snapshot.size} workflows for user ${firebaseUid}`);
+    
+    const workflows: any = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      console.log(`Workflow ${doc.id}:`, JSON.stringify(data, null, 2));
+      
+      // Convert Firestore Timestamps to JavaScript timestamps
+      const convertedData = {
+        ...data,
+        createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : data.createdAt,
+        updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : data.updatedAt,
+        lastRunAt: data.lastRunAt?.toMillis ? data.lastRunAt.toMillis() : data.lastRunAt
+      };
+      
+      workflows.push({
+        id: doc.id,
+        ...convertedData
+      });
+    });
+    
+    res.json({ 
+      success: true, 
+      workflows,
+      count: workflows.length
+    });
+    
+  } catch (error) {
+    console.error('Error fetching workflows:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Create a new workflow
+app.post('/api/workflows', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Authorization header required' 
+      });
+    }
+
+    const firebaseUid = authHeader.split(' ')[1];
+    if (!firebaseUid) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid authorization token' 
+      });
+    }
+
+    const workflowData = req.body;
+    
+    // Validate required fields
+    if (!workflowData.name || !workflowData.types || !workflowData.io) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: name, types, io' 
+      });
+    }
+
+    // Add user ID and timestamps
+    const workflow = {
+      ...workflowData,
+      uid: firebaseUid,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    console.log(`Creating workflow for user: ${firebaseUid}`);
+    console.log('Workflow data:', JSON.stringify(workflow, null, 2));
+    
+    const docRef = await db.collection('workflows').add(workflow);
+    console.log(`Workflow created with ID: ${docRef.id}`);
+    
+    res.json({ 
+      success: true, 
+      workflow: {
+        id: docRef.id,
+        ...workflow
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error creating workflow:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Update a workflow
+app.put('/api/workflows/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Authorization header required' 
+      });
+    }
+
+    const firebaseUid = authHeader.split(' ')[1];
+    if (!firebaseUid) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid authorization token' 
+      });
+    }
+
+    const workflowId = req.params.id;
+    const updateData = req.body;
+    
+    // Add updated timestamp
+    const workflow = {
+      ...updateData,
+      updatedAt: Date.now()
+    };
+
+    console.log(`Updating workflow ${workflowId} for user: ${firebaseUid}`);
+    
+    // Check if workflow exists and belongs to user
+    const workflowRef = db.collection('workflows').doc(workflowId);
+    const workflowDoc = await workflowRef.get();
+    
+    if (!workflowDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Workflow not found' 
+      });
+    }
+    
+    const existingWorkflow = workflowDoc.data();
+    if (existingWorkflow?.uid !== firebaseUid) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied' 
+      });
+    }
+    
+    await workflowRef.update(workflow);
+    
+    // Convert Firestore Timestamps to JavaScript timestamps for response
+    const convertedExisting = {
+      ...existingWorkflow,
+      createdAt: existingWorkflow?.createdAt?.toMillis ? existingWorkflow.createdAt.toMillis() : existingWorkflow?.createdAt,
+      updatedAt: existingWorkflow?.updatedAt?.toMillis ? existingWorkflow.updatedAt.toMillis() : existingWorkflow?.updatedAt,
+      lastRunAt: existingWorkflow?.lastRunAt?.toMillis ? existingWorkflow.lastRunAt.toMillis() : existingWorkflow?.lastRunAt
+    };
+    
+    res.json({ 
+      success: true, 
+      workflow: {
+        id: workflowId,
+        ...convertedExisting,
+        ...workflow
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error updating workflow:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Delete a workflow
+app.delete('/api/workflows/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Authorization header required' 
+      });
+    }
+
+    const firebaseUid = authHeader.split(' ')[1];
+    if (!firebaseUid) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid authorization token' 
+      });
+    }
+
+    const workflowId = req.params.id;
+
+    console.log(`Deleting workflow ${workflowId} for user: ${firebaseUid}`);
+    
+    // Check if workflow exists and belongs to user
+    const workflowRef = db.collection('workflows').doc(workflowId);
+    const workflowDoc = await workflowRef.get();
+    
+    if (!workflowDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Workflow not found' 
+      });
+    }
+    
+    const existingWorkflow = workflowDoc.data();
+    if (existingWorkflow?.uid !== firebaseUid) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Access denied' 
+      });
+    }
+    
+    await workflowRef.delete();
+    
+    res.json({ 
+      success: true, 
+      message: 'Workflow deleted successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error deleting workflow:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
