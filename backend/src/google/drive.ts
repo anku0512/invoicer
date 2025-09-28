@@ -1,9 +1,11 @@
 import { google } from 'googleapis';
 import { getGoogleAuth } from './auth';
 
-export async function downloadDriveFile(fileId: string): Promise<{ buffer: Buffer; fileName: string; mimeType: string; }>{
+export async function downloadDriveFile(fileId: string, auth?: any): Promise<{ buffer: Buffer; fileName: string; mimeType: string; }>{
   try {
-    const auth = getGoogleAuth();
+    if (!auth) {
+      throw new Error('User authentication required. Please complete Google OAuth flow first.');
+    }
     const drive = google.drive({ version: 'v3', auth });
     console.log(`Downloading Drive file: ${fileId}`);
     const file = await drive.files.get({ fileId, fields: 'id,name,mimeType' });

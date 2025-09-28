@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { apiCall } from '../utils/api';
 import GoogleOAuthSetup from './GoogleOAuthSetup';
 
 interface GoogleSheet {
@@ -38,7 +39,7 @@ const WorkflowManager: React.FC = () => {
   const fetchUserSheets = useCallback(async () => {
     setLoadingSheets(true);
     try {
-      const response = await fetch(`https://invoicer-backend-euxq.onrender.com/api/workflow/sheets?firebaseUid=${userData?.uid}`);
+      const response = await apiCall(`/api/workflow/sheets?firebaseUid=${userData?.uid}`);
       const data = await response.json();
       
       if (data.success) {
@@ -85,11 +86,8 @@ const WorkflowManager: React.FC = () => {
     setWorkflow(prev => ({ ...prev, processing: true, result: null }));
 
     try {
-      const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/workflow/sheets/create', {
+      const response = await apiCall('/api/workflow/sheets/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           title: workflow.newSheetName.trim(),
           firebaseUid: userData?.uid
@@ -177,11 +175,8 @@ const WorkflowManager: React.FC = () => {
     setWorkflow(prev => ({ ...prev, processing: true, result: null }));
 
     try {
-      const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/workflow/process-folder', {
+      const response = await apiCall('/api/workflow/process-folder', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           folderId,
           sheetId: workflow.selectedSheetId,

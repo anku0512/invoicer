@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiCall } from '../utils/api';
 import GoogleOAuthSetup from './GoogleOAuthSetup';
 
 const DriveUrlProcessor: React.FC = () => {
@@ -27,11 +28,8 @@ const DriveUrlProcessor: React.FC = () => {
     try {
       console.log('🔍 Debug: Sending request with Firebase UID:', userData.uid);
       
-      const response = await fetch('https://invoicer-backend-euxq.onrender.com/api/process-url', {
+      const response = await apiCall('/api/process-url', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           driveUrl: driveUrl.trim(),
           sheetId: userData.sheetId,

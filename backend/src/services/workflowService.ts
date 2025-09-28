@@ -39,13 +39,11 @@ export class WorkflowService {
   /**
    * Fetch all Google Sheets accessible to the user
    */
-  async getUserSheets(firebaseUid: string): Promise<GoogleSheet[]> {
+  async getUserSheets(firebaseUid: string, userAuth: any): Promise<GoogleSheet[]> {
     try {
-      const auth = getGoogleAuth();
-      
-      // Search for Google Sheets files
+      // Search for Google Sheets files using user's auth
       const response = await this.driveApi.files.list({
-        auth,
+        auth: userAuth,
         q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
         fields: 'files(id,name,webViewLink,createdTime,modifiedTime)',
         orderBy: 'modifiedTime desc',
@@ -71,14 +69,11 @@ export class WorkflowService {
   /**
    * Create a new Google Sheet with proper permissions
    */
-  async createNewSheet(request: CreateSheetRequest): Promise<CreateSheetResponse> {
+  async createNewSheet(request: CreateSheetRequest, userAuth: any): Promise<CreateSheetResponse> {
     try {
-      // Use service account auth for creating the sheet
-      const auth = getGoogleAuth();
-      
-      // Create the spreadsheet with service account
+      // Create the spreadsheet with user's OAuth (user owns the file)
       const spreadsheet = await this.sheetsApi.spreadsheets.create({
-        auth,
+        auth: userAuth,
         requestBody: {
           properties: {
             title: request.title
@@ -109,26 +104,27 @@ export class WorkflowService {
       const sheetId = spreadsheet.data.spreadsheetId!;
       const sheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}`;
 
-      console.log(`Created sheet ${sheetId} with service account`);
+      console.log(`Created sheet ${sheetId} with user's account`);
 
-      // Set "anyone with the link" as editor access (service account owns the file)
-      try {
-        await this.driveApi.permissions.create({
-          auth,
-          fileId: sheetId,
-          requestBody: {
-            role: 'writer',
-            type: 'anyone'
-          }
-        });
-        console.log(`Set sheet ${sheetId} to "anyone with the link" as editor`);
-      } catch (permError: any) {
-        console.error('Error setting anyone permissions:', permError.message);
-        // Continue anyway, the sheet is created
+      // Share with service account for processing
+      const serviceAccountEmail = env.GOOGLE_CLIENT_EMAIL;
+      if (serviceAccountEmail) {
+        try {
+          await this.driveApi.permissions.create({
+            auth: userAuth,
+            fileId: sheetId,
+            requestBody: {
+              role: 'writer',
+              type: 'user',
+              emailAddress: serviceAccountEmail
+            }
+          });
+          console.log(`Shared sheet ${sheetId} with service account ${serviceAccountEmail}`);
+        } catch (shareError: any) {
+          console.error('Error sharing with service account:', shareError.message);
+          // Continue anyway, the sheet is created
+        }
       }
-
-      // Add headers to both sheets
-      await this.addHeadersToSheet(sheetId, auth);
 
       console.log(`Created new sheet: ${request.title} (${sheetId})`);
       
@@ -198,13 +194,15 @@ export class WorkflowService {
   /**
    * Get files from a Google Drive folder
    */
-  async getDriveFolderFiles(folderId: string, firebaseUid: string): Promise<any[]> {
+  async getDriveFolderFiles(folderId: string, firebaseUid: string, userAuth: any): Promise<any[]> {
     try {
-      const auth = getGoogleAuth();
+      if (!userAuth) {
+        throw new Error('User authentication required. Please complete Google OAuth flow first.');
+      }
       
-      // Get files from the folder
+      // Get files from the folder using user's OAuth client
       const response = await this.driveApi.files.list({
-        auth,
+        auth: userAuth,
         q: `'${folderId}' in parents and trashed=false`,
         fields: 'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink)',
         orderBy: 'modifiedTime desc'
@@ -223,9 +221,9 @@ export class WorkflowService {
   /**
    * Process files from a Google Drive folder
    */
-  async processDriveFolder(folderId: string, sheetId: string, firebaseUid: string): Promise<{ success: boolean; processedFiles: number; skippedFiles: number; error?: string }> {
+  async processDriveFolder(folderId: string, sheetId: string, firebaseUid: string, userAuth: any): Promise<{ success: boolean; processedFiles: number; skippedFiles: number; error?: string }> {
     try {
-      const files = await this.getDriveFolderFiles(folderId, firebaseUid);
+      const files = await this.getDriveFolderFiles(folderId, firebaseUid, userAuth);
       
       // Filter for supported file types
       const supportedFiles = files.filter(file => {
@@ -266,8 +264,8 @@ export class WorkflowService {
         return { success: true, processedFiles: 0, skippedFiles: skippedCount };
       }
 
-      // Ensure headers in the target sheet
-      await ensureHeaders(sheetId);
+      // Ensure headers in the target sheet with user auth
+      await ensureHeaders(sheetId, userAuth);
       await prepareTmp();
 
       // Process each file with the existing parsing logic
@@ -288,7 +286,7 @@ export class WorkflowService {
           );
 
           // Process the file using existing logic
-          await this.processSingleFile(file.id!, sheetId, acc);
+          await this.processSingleFile(file.id!, sheetId, acc, userAuth);
           
           // Mark file as completed
           await this.fileTrackingService.markFileCompleted(firebaseUid, file.id!);
@@ -304,11 +302,11 @@ export class WorkflowService {
       // Write accumulated data to sheet if any
       if (acc.invoices.length > 0 || acc.lines.length > 0) {
         if (acc.invoices.length > 0) {
-          await upsertInvoices(acc.invoices, sheetId);
+          await upsertInvoices(acc.invoices, sheetId, userAuth);
           console.log(`✅ ${acc.invoices.length} invoices written to Google Sheets`);
         }
         if (acc.lines.length > 0) {
-          await appendLineItems(acc.lines, sheetId);
+          await appendLineItems(acc.lines, sheetId, userAuth);
           console.log(`✅ ${acc.lines.length} line items written to Google Sheets`);
         }
       }
@@ -332,10 +330,10 @@ export class WorkflowService {
   /**
    * Process a single file using the existing parsing logic
    */
-  private async processSingleFile(fileId: string, sheetId: string, acc: Accumulator): Promise<void> {
+  private async processSingleFile(fileId: string, sheetId: string, acc: Accumulator, userAuth: any): Promise<void> {
     try {
-      // Download file from Google Drive
-      const fileData = await downloadDriveFile(fileId);
+      // Download file from Google Drive using user's OAuth client
+      const fileData = await downloadDriveFile(fileId, userAuth);
       
       // Check if it's a zip file and extract if needed
       let filesToProcess: { buffer: Buffer; fileName: string }[] = [];

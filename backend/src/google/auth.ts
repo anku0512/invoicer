@@ -34,6 +34,8 @@ function formatPrivateKey(privateKey: string): string {
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
 // Initialize Firebase Admin if not already initialized
@@ -50,10 +52,18 @@ function initializeFirebaseAdmin() {
 }
 
 // Google OAuth2 configuration
+// Use localhost for local development, production URL for deployment
+const getRedirectUri = () => {
+  if (process.env.NODE_ENV === 'development' || !process.env.BACKEND_URL) {
+    return 'http://localhost:3000/api/oauth/callback';
+  }
+  return `${process.env.BACKEND_URL}/api/oauth/callback`;
+};
+
 const oauth2Client = new OAuth2Client(
   env.GOOGLE_CLIENT_ID,
   env.GOOGLE_CLIENT_SECRET,
-  `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/oauth/callback`
+  getRedirectUri()
 );
 
 // Store the current user's auth client
@@ -85,10 +95,48 @@ export function getGoogleOAuthURL(firebaseUid?: string): string {
 // Handle OAuth callback and store refresh token
 export async function handleOAuthCallback(code: string, firebaseUid: string): Promise<void> {
   try {
-    const { tokens } = await oauth2Client.getToken(code);
+    // Create a fresh OAuth2Client for this specific user's OAuth flow
+    const userOAuth2Client = new OAuth2Client(
+      env.GOOGLE_CLIENT_ID,
+      env.GOOGLE_CLIENT_SECRET,
+      getRedirectUri()
+    );
+    
+    console.log(`🔍 Debug: Created fresh OAuth2Client for user ${firebaseUid}`);
+    const { tokens } = await userOAuth2Client.getToken(code);
     
     if (!tokens.refresh_token) {
       throw new Error('No refresh token received from Google OAuth');
+    }
+    
+    console.log(`🔍 Debug: Received tokens for user ${firebaseUid}:`, {
+      hasRefreshToken: !!tokens.refresh_token,
+      hasAccessToken: !!tokens.access_token,
+      expiryDate: tokens.expiry_date
+    });
+    
+    // Test the tokens to see what user they represent
+    try {
+      const testOAuth2Client = new OAuth2Client(
+        env.GOOGLE_CLIENT_ID,
+        env.GOOGLE_CLIENT_SECRET,
+        getRedirectUri()
+      );
+      testOAuth2Client.setCredentials({
+        refresh_token: tokens.refresh_token,
+        access_token: tokens.access_token,
+        expiry_date: tokens.expiry_date,
+      });
+      
+      const oauth2 = google.oauth2({ version: 'v2', auth: testOAuth2Client });
+      const userInfo = await oauth2.userinfo.get();
+      console.log(`🔍 Debug: OAuth callback tokens represent user:`, {
+        email: userInfo.data.email,
+        name: userInfo.data.name,
+        id: userInfo.data.id
+      });
+    } catch (error: any) {
+      console.log(`🔍 Debug: Could not get user info from OAuth callback tokens:`, error.message);
     }
     
     // Initialize Firebase Admin
@@ -110,44 +158,104 @@ export async function handleOAuthCallback(code: string, firebaseUid: string): Pr
   }
 }
 
-// Get OAuth2Client for a specific user
-export async function getUserOAuthClient(firebaseUid: string): Promise<OAuth2Client | null> {
+// Get OAuth2Client for a specific user - per-request approach
+export async function getUserGoogleClient(firebaseUid: string): Promise<OAuth2Client> {
+  console.log(`🔍 Debug: Creating fresh OAuth2Client for user ${firebaseUid}`);
+  
+  // Initialize Firebase Admin
+  initializeFirebaseAdmin();
+  const db = getFirestore();
+  
+  // Get user's tokens from Firestore
+  const tokenDoc = await db.collection('user_tokens').doc(firebaseUid).get();
+  
+  if (!tokenDoc.exists) {
+    console.log(`🔍 Debug: No tokens found for user ${firebaseUid}`);
+    throw new Error('No Google OAuth connected for this user');
+  }
+  
+  const tokenData = tokenDoc.data();
+  console.log(`🔍 Debug: Retrieved token data for user ${firebaseUid}:`, {
+    hasRefreshToken: !!tokenData?.refreshToken,
+    hasAccessToken: !!tokenData?.accessToken,
+    expiryDate: tokenData?.expiryDate,
+    updatedAt: tokenData?.updatedAt
+  });
+  
+  if (!tokenData?.refreshToken) {
+    console.log(`🔍 Debug: No refresh token found for user ${firebaseUid}`);
+    throw new Error('No refresh token found for this user');
+  }
+  
+  // Create fresh OAuth2Client for this request
+  const client = new OAuth2Client(
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_CLIENT_SECRET,
+    getRedirectUri()
+  );
+  
+  // Set credentials from database
+  client.setCredentials({
+    refresh_token: tokenData.refreshToken,
+    access_token: tokenData.accessToken,
+    expiry_date: tokenData.expiryDate,
+  });
+  
+  // Force token refresh to ensure we have valid credentials
   try {
-    // Initialize Firebase Admin
-    initializeFirebaseAdmin();
-    const db = getFirestore();
+    console.log(`🔍 Debug: Refreshing tokens for user ${firebaseUid}`);
+    const { credentials } = await client.refreshAccessToken();
+    console.log(`🔍 Debug: Token refresh successful for user ${firebaseUid}`);
     
-    // Get user's tokens from Firestore
-    const tokenDoc = await db.collection('user_tokens').doc(firebaseUid).get();
-    
-    if (!tokenDoc.exists) {
-      console.log(`🔍 Debug: No tokens found for user ${firebaseUid}`);
-      return null;
+    // Update stored tokens with refreshed ones
+    if (credentials.access_token) {
+      await db.collection('user_tokens').doc(firebaseUid).update({
+        accessToken: credentials.access_token,
+        expiryDate: credentials.expiry_date,
+        updatedAt: new Date(),
+      });
+      console.log(`🔍 Debug: Updated stored tokens for user ${firebaseUid}`);
     }
-    
-    const tokenData = tokenDoc.data();
-    if (!tokenData?.refreshToken) {
-      console.log(`🔍 Debug: No refresh token found for user ${firebaseUid}`);
-      return null;
+  } catch (refreshError: any) {
+    console.log(`🔍 Debug: Token refresh failed for user ${firebaseUid}:`, refreshError.message);
+    // If refresh fails, the tokens might be invalid - we'll need to re-authenticate
+    if (refreshError.message.includes('invalid_grant') || refreshError.message.includes('invalid_request')) {
+      console.log(`🔍 Debug: Tokens are invalid for user ${firebaseUid}, need to re-authenticate`);
+      throw new Error('Invalid OAuth tokens - user needs to re-authenticate');
     }
-    
-    // Create OAuth2Client with stored refresh token
-    const userOAuthClient = new OAuth2Client(
-      env.GOOGLE_CLIENT_ID,
-      env.GOOGLE_CLIENT_SECRET,
-      `${process.env.BACKEND_URL || 'http://localhost:3000'}/api/oauth/callback`
-    );
-    
-    userOAuthClient.setCredentials({
-      refresh_token: tokenData.refreshToken,
-      access_token: tokenData.accessToken,
-      expiry_date: tokenData.expiryDate,
+    throw refreshError;
+  }
+  
+  // Test the OAuth client to see what user it represents
+  try {
+    const oauth2 = google.oauth2({ version: 'v2', auth: client });
+    const userInfo = await oauth2.userinfo.get();
+    console.log(`🔍 Debug: Fresh OAuth2Client for user ${firebaseUid} represents:`, {
+      email: userInfo.data.email,
+      name: userInfo.data.name,
+      id: userInfo.data.id
     });
-    
-    console.log(`🔍 Debug: Created OAuth2Client for user ${firebaseUid}`);
-    return userOAuthClient;
+  } catch (error: any) {
+    console.log(`🔍 Debug: Could not get user info for OAuth2Client:`, error.message);
+    // If we can't get user info, the tokens are likely invalid
+    if (error.message.includes('authentication credential') || error.message.includes('invalid_grant')) {
+      console.log(`🔍 Debug: Tokens appear to be invalid for user ${firebaseUid}`);
+      throw new Error('Invalid OAuth tokens - user needs to re-authenticate');
+    }
+    throw error;
+  }
+  
+  console.log(`🔍 Debug: Created fresh OAuth2Client for user ${firebaseUid}`);
+  return client;
+}
+
+// Legacy function for backward compatibility - now throws error to force migration
+export async function getUserOAuthClient(firebaseUid: string): Promise<OAuth2Client | null> {
+  console.log(`🔍 Debug: WARNING: Using deprecated getUserOAuthClient for user ${firebaseUid}`);
+  try {
+    return await getUserGoogleClient(firebaseUid);
   } catch (error) {
-    console.error(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error);
+    console.log(`🔍 Debug: getUserOAuthClient failed for user ${firebaseUid}:`, error);
     return null;
   }
 }
@@ -174,13 +282,19 @@ export async function verifySheetAccess(firebaseUid: string, sheetId: string): P
 }
 
 export function getGoogleAuth() {
-  // If we have a user auth, use that; otherwise fall back to service account
+  // Always require user authentication for Google Sheets operations
   if (currentUserAuth) {
     console.log('🔍 Debug: Using user OAuth authentication for Google Sheets');
     return currentUserAuth;
   }
   
-  console.log('🔍 Debug: No user auth available, falling back to service account');
+  console.log('🔍 Debug: No user auth available - user must authenticate with Google OAuth');
+  throw new Error('User authentication required. Please complete Google OAuth flow first.');
+}
+
+// New function for service account auth (only for specific operations)
+export function getServiceAccountAuth() {
+  console.log('🔍 Debug: Using service account authentication');
   
   // Check if service account credentials are available
   if (!env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PRIVATE_KEY) {
@@ -212,7 +326,7 @@ export function getGoogleAuth() {
 }
 
 export async function testAuth() {
-  const auth = getGoogleAuth();
+  const auth = getServiceAccountAuth();
   try {
     if (auth instanceof google.auth.JWT) {
       await auth.authorize();
@@ -220,10 +334,10 @@ export async function testAuth() {
       // For OAuth2Client, we don't need to call authorize
       console.log('OAuth2Client auth ready');
     }
-    console.log('Google auth successful');
+    console.log('Google service account auth successful');
     return true;
   } catch (error: any) {
-    console.error('Google auth failed:', error.message);
+    console.error('Google service account auth failed:', error.message);
     if (error.message.includes('invalid_grant')) {
       console.error('Invalid credentials - check GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
     }
@@ -231,5 +345,50 @@ export async function testAuth() {
       console.error('Access denied - check if APIs are enabled and service account has permissions');
     }
     return false;
+  }
+}
+
+// Helper function to clear user tokens (for testing)
+export async function clearUserTokens(firebaseUid: string): Promise<void> {
+  try {
+    initializeFirebaseAdmin();
+    const db = getFirestore();
+    await db.collection('user_tokens').doc(firebaseUid).delete();
+    console.log(`🔍 Debug: Cleared tokens for user ${firebaseUid}`);
+  } catch (error) {
+    console.error(`🔍 Debug: Failed to clear tokens for user ${firebaseUid}:`, error);
+    throw error;
+  }
+}
+
+// Helper function to check if user needs to re-authenticate
+export async function checkUserAuthStatus(firebaseUid: string): Promise<{ needsReauth: boolean; authUrl?: string }> {
+  try {
+    const userOAuthClient = await getUserOAuthClient(firebaseUid);
+    if (!userOAuthClient) {
+      return { 
+        needsReauth: true, 
+        authUrl: getGoogleOAuthURL(firebaseUid) 
+      };
+    }
+    
+    // Try to get user info to verify the tokens work
+    try {
+      const oauth2 = google.oauth2({ version: 'v2', auth: userOAuthClient });
+      await oauth2.userinfo.get();
+      return { needsReauth: false };
+    } catch (error: any) {
+      console.log(`🔍 Debug: User ${firebaseUid} needs re-authentication:`, error.message);
+      return { 
+        needsReauth: true, 
+        authUrl: getGoogleOAuthURL(firebaseUid) 
+      };
+    }
+  } catch (error) {
+    console.error(`🔍 Debug: Error checking auth status for user ${firebaseUid}:`, error);
+    return { 
+      needsReauth: true, 
+      authUrl: getGoogleOAuthURL(firebaseUid) 
+    };
   }
 }

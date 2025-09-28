@@ -8,7 +8,7 @@ import { uploadToLlamaParse, pollJob, getMarkdown } from './ingest/llamaparse';
 import { normalizeMarkdown, normalizeMarkdownBatch } from './ai/normalize';
 import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
 import { Accumulator } from './core/accumulator';
-import { setUserAuth, setUserToken, getGoogleOAuthURL, handleOAuthCallback, getUserOAuthClient, verifySheetAccess } from './google/auth';
+import { setUserAuth, setUserToken, getGoogleOAuthURL, handleOAuthCallback, getUserOAuthClient, getUserGoogleClient, verifySheetAccess, clearUserTokens, checkUserAuthStatus } from './google/auth';
 import { WorkflowService } from './services/workflowService';
 import fs from 'fs-extra';
 import path from 'path';
@@ -293,13 +293,176 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Debug endpoint to clear user tokens
+app.post('/api/debug/clear-tokens', async (req, res) => {
+  try {
+    const { firebaseUid } = req.body;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'Firebase UID is required' });
+    }
+    
+    await clearUserTokens(firebaseUid);
+    res.json({ 
+      success: true, 
+      message: `Cleared tokens for user ${firebaseUid}` 
+    });
+  } catch (error) {
+    console.error('Error clearing tokens:', error);
+    res.status(500).json({ error: 'Failed to clear tokens' });
+  }
+});
+
+// Debug endpoint to force OAuth flow
+app.post('/api/debug/force-oauth', async (req, res) => {
+  try {
+    const { firebaseUid } = req.body;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'Firebase UID is required' });
+    }
+    
+    // Clear existing tokens
+    await clearUserTokens(firebaseUid);
+    
+    // Generate OAuth URL
+    const authUrl = getGoogleOAuthURL(firebaseUid);
+    
+    res.json({ 
+      success: true, 
+      message: `Cleared tokens and generated OAuth URL for user ${firebaseUid}`,
+      authUrl
+    });
+  } catch (error) {
+    console.error('Error forcing OAuth:', error);
+    res.status(500).json({ error: 'Failed to force OAuth' });
+  }
+});
+
+// Debug endpoint to check user auth status
+app.get('/api/debug/auth-status', async (req, res) => {
+  try {
+    const { firebaseUid } = req.query;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'Firebase UID is required' });
+    }
+    
+    const authStatus = await checkUserAuthStatus(firebaseUid as string);
+    res.json({ 
+      success: true, 
+      firebaseUid,
+      needsReauth: authStatus.needsReauth,
+      authUrl: authStatus.authUrl
+    });
+  } catch (error) {
+    console.error('Error checking auth status:', error);
+    res.status(500).json({ error: 'Failed to check auth status' });
+  }
+});
+
+// Debug endpoint to check OAuth callback logs
+app.get('/api/debug/oauth-logs', async (req, res) => {
+  try {
+    const { firebaseUid } = req.query;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'Firebase UID is required' });
+    }
+    
+    // This is a simple endpoint to check if OAuth callback was called
+    // In a real implementation, you might want to store callback logs in a database
+    res.json({ 
+      success: true, 
+      firebaseUid,
+      message: 'Check server logs for OAuth callback activity',
+      note: 'Look for "OAuth callback received" in server logs'
+    });
+  } catch (error) {
+    console.error('Error checking OAuth logs:', error);
+    res.status(500).json({ error: 'Failed to check OAuth logs' });
+  }
+});
+
+// Debug endpoint to check stored tokens
+app.get('/api/debug/tokens', async (req, res) => {
+  try {
+    const { firebaseUid } = req.query;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'Firebase UID is required' });
+    }
+    
+    const { initializeApp, getApps } = require('firebase-admin/app');
+    const { getFirestore } = require('firebase-admin/firestore');
+    
+    // Initialize Firebase Admin
+    if (getApps().length === 0) {
+      initializeApp({
+        credential: require('firebase-admin').credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        }),
+      });
+    }
+    
+    const db = getFirestore();
+    const tokenDoc = await db.collection('user_tokens').doc(firebaseUid as string).get();
+    
+    if (!tokenDoc.exists) {
+      return res.json({ 
+        success: true, 
+        firebaseUid,
+        hasTokens: false,
+        message: 'No tokens found for user'
+      });
+    }
+    
+    const tokenData = tokenDoc.data();
+    
+    // Test the tokens to see what user they represent
+    let tokenUserInfo = null;
+    try {
+      const { getUserGoogleClient } = require('./google/auth');
+      const userClient = await getUserGoogleClient(firebaseUid as string);
+      const oauth2 = require('googleapis').google.oauth2({ version: 'v2', auth: userClient });
+      const userInfo = await oauth2.userinfo.get();
+      tokenUserInfo = {
+        email: userInfo.data.email,
+        name: userInfo.data.name,
+        id: userInfo.data.id
+      };
+    } catch (error: any) {
+      tokenUserInfo = { error: error.message };
+    }
+    
+    res.json({ 
+      success: true, 
+      firebaseUid,
+      hasTokens: true,
+      tokenData: {
+        hasRefreshToken: !!tokenData?.refreshToken,
+        hasAccessToken: !!tokenData?.accessToken,
+        expiryDate: tokenData?.expiryDate,
+        updatedAt: tokenData?.updatedAt
+      },
+      tokenUserInfo
+    });
+  } catch (error) {
+    console.error('Error checking tokens:', error);
+    res.status(500).json({ error: 'Failed to check tokens' });
+  }
+});
+
 // Google OAuth endpoints
 app.get('/api/oauth/url', (req, res) => {
   try {
     const { firebaseUid } = req.query;
+    console.log('🔍 Debug: ===== OAUTH URL GENERATION START =====');
     console.log('🔍 Debug: Generating OAuth URL for Firebase UID:', firebaseUid);
+    console.log('🔍 Debug: Request timestamp:', new Date().toISOString());
+    console.log('🔍 Debug: Request headers:', req.headers);
+    
     const authUrl = getGoogleOAuthURL(firebaseUid as string);
     console.log('🔍 Debug: Generated OAuth URL:', authUrl);
+    console.log('🔍 Debug: ===== OAUTH URL GENERATION END =====');
+    
     res.json({ authUrl });
   } catch (error) {
     console.error('Error generating OAuth URL:', error);
@@ -311,11 +474,14 @@ app.get('/api/oauth/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
     
+    console.log('🔍 Debug: ===== OAUTH CALLBACK START =====');
     console.log('🔍 Debug: OAuth callback received');
     console.log('🔍 Debug: Full query params:', req.query);
     console.log('🔍 Debug: Code:', code ? 'Present' : 'Missing');
     console.log('🔍 Debug: State:', state);
-    console.log('🔍 Debug: State type:', typeof state);
+    console.log('🔍 Debug: Timestamp:', new Date().toISOString());
+    console.log('🔍 Debug: Request headers:', req.headers);
+    console.log('🔍 Debug: User agent:', req.headers['user-agent']);
     
     if (!code) {
       return res.status(400).json({ error: 'Authorization code not provided' });
@@ -323,8 +489,16 @@ app.get('/api/oauth/callback', async (req, res) => {
     
     // Handle case where state might be undefined or empty
     let firebaseUid = state as string;
+    console.log('🔍 Debug: Extracted Firebase UID from state:', firebaseUid);
+    console.log('🔍 Debug: State type:', typeof state);
+    console.log('🔍 Debug: State length:', state ? String(state).length : 'undefined');
+    
     if (!firebaseUid || firebaseUid === 'undefined' || firebaseUid === 'unknown') {
       console.log('🔍 Debug: Invalid or missing state, cannot proceed');
+      console.log('🔍 Debug: State value:', state);
+      console.log('🔍 Debug: State === undefined:', state === undefined);
+      console.log('🔍 Debug: State === "undefined":', state === 'undefined');
+      console.log('🔍 Debug: State === "unknown":', state === 'unknown');
       return res.status(400).json({ 
         error: 'Firebase UID not provided in OAuth state',
         message: 'Please try the OAuth flow again from the beginning'
@@ -332,16 +506,43 @@ app.get('/api/oauth/callback', async (req, res) => {
     }
     
     console.log('🔍 Debug: Processing OAuth for Firebase UID:', firebaseUid);
+    console.log('🔍 Debug: About to call handleOAuthCallback...');
     
     await handleOAuthCallback(code as string, firebaseUid);
     
-    res.json({ 
-      success: true, 
-      message: 'Google OAuth completed successfully',
-      firebaseUid 
-    });
+    console.log('🔍 Debug: handleOAuthCallback completed successfully');
+    
+    // Return HTML page that closes the popup and notifies parent
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>OAuth Complete</title>
+        </head>
+        <body>
+          <h2>Google OAuth Completed Successfully!</h2>
+          <p>You can now close this window and return to the application.</p>
+          <script>
+            // Notify parent window that OAuth is complete
+            if (window.opener) {
+              window.opener.postMessage({ type: 'oauth-complete', success: true }, '*');
+            }
+            // Close the popup after a short delay
+            setTimeout(() => {
+              window.close();
+            }, 2000);
+          </script>
+        </body>
+      </html>
+    `;
+    
+    console.log('🔍 Debug: Sending HTML response to close popup');
+    res.send(html);
+    console.log('🔍 Debug: ===== OAUTH CALLBACK END =====');
   } catch (error) {
+    console.error('🔍 Debug: ===== OAUTH CALLBACK ERROR =====');
     console.error('OAuth callback error:', error);
+    console.error('🔍 Debug: ===== OAUTH CALLBACK ERROR END =====');
     res.status(500).json({ 
       error: 'OAuth callback failed',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -401,20 +602,20 @@ app.get('/api/workflow/sheets', async (req, res) => {
 
     console.log(`Fetching sheets for user: ${firebaseUid}`);
     
-    // Get user's OAuth client
-    const userOAuthClient = await getUserOAuthClient(firebaseUid as string);
-    if (!userOAuthClient) {
+    // Get fresh OAuth client for this request
+    let userOAuthClient;
+    try {
+      userOAuthClient = await getUserGoogleClient(firebaseUid as string);
+    } catch (error: any) {
+      console.log(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error.message);
       return res.status(401).json({ 
         success: false, 
         error: 'User not authenticated with Google. Please complete OAuth flow first.',
         authUrl: getGoogleOAuthURL(firebaseUid as string)
       });
     }
-
-    // Set user auth for this request
-    setUserAuth(userOAuthClient);
     
-    const sheets = await workflowService.getUserSheets(firebaseUid as string);
+    const sheets = await workflowService.getUserSheets(firebaseUid as string, userOAuthClient);
     
     res.json({ 
       success: true, 
@@ -445,8 +646,20 @@ app.post('/api/workflow/sheets/create', async (req, res) => {
 
     console.log(`Creating new sheet: ${title} for user: ${firebaseUid}`);
     
-    // Create sheet using service account (no user OAuth required)
-    const result = await workflowService.createNewSheet({ title, firebaseUid });
+    // Get fresh OAuth client for this request
+    let userOAuthClient;
+    try {
+      userOAuthClient = await getUserGoogleClient(firebaseUid);
+    } catch (error: any) {
+      console.log(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error.message);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User not authenticated with Google. Please complete OAuth flow first.',
+        authUrl: getGoogleOAuthURL(firebaseUid)
+      });
+    }
+    
+    const result = await workflowService.createNewSheet({ title, firebaseUid }, userOAuthClient);
     
     if (result.success) {
       res.json({ 
@@ -485,9 +698,12 @@ app.post('/api/workflow/process-folder', async (req, res) => {
 
     console.log(`Processing drive folder: ${folderId} for sheet: ${sheetId}`);
     
-    // Get user's OAuth client
-    const userOAuthClient = await getUserOAuthClient(firebaseUid);
-    if (!userOAuthClient) {
+    // Get fresh OAuth client for this request
+    let userOAuthClient;
+    try {
+      userOAuthClient = await getUserGoogleClient(firebaseUid);
+    } catch (error: any) {
+      console.log(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error.message);
       return res.status(401).json({ 
         success: false, 
         error: 'User not authenticated with Google. Please complete OAuth flow first.',
@@ -503,12 +719,9 @@ app.post('/api/workflow/process-folder', async (req, res) => {
         error: 'User does not have access to the specified Google Sheet. Please ensure the sheet is shared with your Google account.'
       });
     }
-
-    // Set user auth for this request
-    setUserAuth(userOAuthClient);
     
     // Process the folder
-    const result = await workflowService.processDriveFolder(folderId, sheetId, firebaseUid);
+    const result = await workflowService.processDriveFolder(folderId, sheetId, firebaseUid, userOAuthClient);
     
     if (result.success) {
       res.json({ 
@@ -566,13 +779,16 @@ app.post('/api/process-url', async (req, res) => {
     const fileId = fileIdMatch[1];
     console.log(`Extracted file ID: ${fileId}`);
     
-    // Get user's OAuth client
-    const userOAuthClient = await getUserOAuthClient(firebaseUid);
-    if (!userOAuthClient) {
+    // Get fresh OAuth client for this request
+    let userOAuthClient;
+    try {
+      userOAuthClient = await getUserGoogleClient(firebaseUid);
+    } catch (error: any) {
+      console.log(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error.message);
       return res.status(401).json({ 
         success: false, 
         error: 'User not authenticated with Google. Please complete OAuth flow first.',
-        authUrl: getGoogleOAuthURL()
+        authUrl: getGoogleOAuthURL(firebaseUid)
       });
     }
     
@@ -585,9 +801,7 @@ app.post('/api/process-url', async (req, res) => {
       });
     }
     
-    // Set user auth for this request
-    setUserAuth(userOAuthClient);
-    console.log('🔍 Debug: Using user OAuth client for Google Sheets operations');
+    console.log('🔍 Debug: Using fresh OAuth client for Google Sheets operations');
     
     // Set the user's sheet ID in environment for processing
     const originalTargetSheetId = process.env.TARGET_SHEET_ID;

@@ -1,13 +1,15 @@
 import { google } from 'googleapis';
 import { env } from '../config/env';
 import { INVOICE_HEADERS, LINE_HEADERS, SHEETS } from '../config/constants';
-import { getGoogleAuth } from './auth';
+import { getGoogleAuth, getServiceAccountAuth } from './auth';
 
 const sheetsApi = google.sheets('v4');
 
-export async function ensureHeaders(sheetId?: string) {
+export async function ensureHeaders(sheetId?: string, auth?: any) {
   try {
-    const auth = getGoogleAuth();
+    if (!auth) {
+      throw new Error('Authentication required - must provide OAuth client');
+    }
     const targetSheetId = sheetId || SHEETS.target.id;
     if (!targetSheetId) {
       throw new Error('TARGET_SHEET_ID is not configured');
@@ -85,7 +87,7 @@ async function ensureHeaderRow(spreadsheetId: string, tab: string, headers: stri
 
 export async function readSourceLinks(): Promise<string[]> {
   try {
-    const auth = getGoogleAuth();
+    const auth = getServiceAccountAuth(); // Use service account for reading source links
     const range = `${SHEETS.source.tab}!1:99999`;
     console.log(`Reading from sheet: ${SHEETS.source.id}, range: ${range}`);
     const res = await sheetsApi.spreadsheets.values.get({ auth, spreadsheetId: SHEETS.source.id, range });
@@ -113,9 +115,11 @@ export async function readSourceLinks(): Promise<string[]> {
   }
 }
 
-export async function upsertInvoices(invoices: Record<string,string>[], sheetId?: string) {
+export async function upsertInvoices(invoices: Record<string,string>[], sheetId?: string, auth?: any) {
   if (invoices.length === 0) return;
-  const auth = getGoogleAuth();
+  if (!auth) {
+    throw new Error('Authentication required - must provide OAuth client');
+  }
   const spreadsheetId = sheetId || SHEETS.target.id;
   if (!spreadsheetId) {
     throw new Error('Sheet ID is not provided and TARGET_SHEET_ID is not configured');
@@ -223,9 +227,11 @@ export async function upsertInvoices(invoices: Record<string,string>[], sheetId?
   }
 }
 
-export async function appendLineItems(lines: Record<string,string>[], sheetId?: string) {
+export async function appendLineItems(lines: Record<string,string>[], sheetId?: string, auth?: any) {
   if (lines.length === 0) return;
-  const auth = getGoogleAuth();
+  if (!auth) {
+    throw new Error('Authentication required - must provide OAuth client');
+  }
   const spreadsheetId = sheetId || SHEETS.target.id;
   if (!spreadsheetId) {
     throw new Error('Sheet ID is not provided and TARGET_SHEET_ID is not configured');

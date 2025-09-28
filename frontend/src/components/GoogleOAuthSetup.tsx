@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { apiCall } from '../utils/api';
 
 const GoogleOAuthSetup: React.FC = () => {
   const { userData } = useAuth();
@@ -18,11 +19,17 @@ const GoogleOAuthSetup: React.FC = () => {
         return;
       }
       
+      console.log('🔍 Debug: ===== FRONTEND OAUTH URL REQUEST START =====');
       console.log('🔍 Debug: Getting OAuth URL for Firebase UID:', userData.uid);
-      const response = await fetch(`https://invoicer-backend-euxq.onrender.com/api/oauth/url?firebaseUid=${encodeURIComponent(userData.uid)}`);
+      console.log('🔍 Debug: User data:', userData);
+      console.log('🔍 Debug: Timestamp:', new Date().toISOString());
+      
+      const response = await apiCall(`/api/oauth/url?firebaseUid=${encodeURIComponent(userData.uid)}`);
       const data = await response.json();
       
       console.log('🔍 Debug: OAuth URL response:', data);
+      console.log('🔍 Debug: ===== FRONTEND OAUTH URL REQUEST END =====');
+      
       if (data.authUrl) {
         setAuthUrl(data.authUrl);
       } else {
@@ -34,11 +41,36 @@ const GoogleOAuthSetup: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [userData?.uid]);
+  }, [userData]);
 
   const handleOAuthClick = () => {
     if (authUrl) {
+      console.log('🔍 Debug: ===== FRONTEND OAUTH CLICK START =====');
+      console.log('🔍 Debug: Opening OAuth URL:', authUrl);
+      console.log('🔍 Debug: User data:', userData);
+      console.log('🔍 Debug: Timestamp:', new Date().toISOString());
+      
       window.open(authUrl, '_blank', 'width=600,height=600');
+      
+      // Listen for OAuth completion message
+      const handleMessage = (event: MessageEvent) => {
+        console.log('🔍 Debug: Received message:', event.data);
+        if (event.data.type === 'oauth-complete' && event.data.success) {
+          console.log('🔍 Debug: OAuth completed successfully');
+          console.log('🔍 Debug: ===== FRONTEND OAUTH COMPLETE =====');
+          // Refresh the page or trigger a re-fetch of data
+          window.location.reload();
+        }
+      };
+      
+      window.addEventListener('message', handleMessage);
+      
+      // Clean up listener after 5 minutes
+      setTimeout(() => {
+        window.removeEventListener('message', handleMessage);
+      }, 300000);
+      
+      console.log('🔍 Debug: ===== FRONTEND OAUTH CLICK END =====');
     }
   };
 
