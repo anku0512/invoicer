@@ -9,6 +9,7 @@ import { normalizeMarkdown, normalizeMarkdownBatch } from './ai/normalize';
 import { ensureHeaders, upsertInvoices, appendLineItems } from './google/sheets';
 import { Accumulator } from './core/accumulator';
 import { setUserAuth, setUserToken, getGoogleOAuthURL, handleOAuthCallback, getUserOAuthClient, verifySheetAccess } from './google/auth';
+import { WorkflowService } from './services/workflowService';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -380,6 +381,155 @@ app.get('/trigger', async (req, res) => {
         </body>
       </html>
     `);
+  }
+});
+
+// Workflow API endpoints
+const workflowService = new WorkflowService();
+
+// Get user's Google Sheets
+app.get('/api/workflow/sheets', async (req, res) => {
+  try {
+    const { firebaseUid } = req.query;
+    
+    if (!firebaseUid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'firebaseUid is required' 
+      });
+    }
+
+    console.log(`Fetching sheets for user: ${firebaseUid}`);
+    
+    // Get user's OAuth client
+    const userOAuthClient = await getUserOAuthClient(firebaseUid as string);
+    if (!userOAuthClient) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User not authenticated with Google. Please complete OAuth flow first.',
+        authUrl: getGoogleOAuthURL(firebaseUid as string)
+      });
+    }
+
+    // Set user auth for this request
+    setUserAuth(userOAuthClient);
+    
+    const sheets = await workflowService.getUserSheets(firebaseUid as string);
+    
+    res.json({ 
+      success: true, 
+      sheets,
+      count: sheets.length
+    });
+    
+  } catch (error) {
+    console.error('Error fetching user sheets:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Create new Google Sheet
+app.post('/api/workflow/sheets/create', async (req, res) => {
+  try {
+    const { title, firebaseUid } = req.body;
+    
+    if (!title || !firebaseUid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'title and firebaseUid are required' 
+      });
+    }
+
+    console.log(`Creating new sheet: ${title} for user: ${firebaseUid}`);
+    
+    // Create sheet using service account (no user OAuth required)
+    const result = await workflowService.createNewSheet({ title, firebaseUid });
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        sheetId: result.sheetId,
+        sheetUrl: result.sheetUrl,
+        message: 'Sheet created successfully'
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: result.error || 'Failed to create sheet'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error creating sheet:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Process Google Drive folder
+app.post('/api/workflow/process-folder', async (req, res) => {
+  try {
+    const { folderId, sheetId, firebaseUid } = req.body;
+    
+    if (!folderId || !sheetId || !firebaseUid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'folderId, sheetId, and firebaseUid are required' 
+      });
+    }
+
+    console.log(`Processing drive folder: ${folderId} for sheet: ${sheetId}`);
+    
+    // Get user's OAuth client
+    const userOAuthClient = await getUserOAuthClient(firebaseUid);
+    if (!userOAuthClient) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'User not authenticated with Google. Please complete OAuth flow first.',
+        authUrl: getGoogleOAuthURL(firebaseUid)
+      });
+    }
+
+    // Verify user has access to the target sheet
+    const hasAccess = await verifySheetAccess(firebaseUid, sheetId);
+    if (!hasAccess) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'User does not have access to the specified Google Sheet. Please ensure the sheet is shared with your Google account.'
+      });
+    }
+
+    // Set user auth for this request
+    setUserAuth(userOAuthClient);
+    
+    // Process the folder
+    const result = await workflowService.processDriveFolder(folderId, sheetId, firebaseUid);
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: `Successfully processed ${result.processedFiles} files from the folder (${result.skippedFiles} files were already processed)`,
+        processedFiles: result.processedFiles,
+        skippedFiles: result.skippedFiles
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: result.error || 'Failed to process folder'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error processing drive folder:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

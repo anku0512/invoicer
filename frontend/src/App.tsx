@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth';
 import Login from './components/Login';
 import UserSettings from './components/UserSettings';
 import DriveUrlProcessor from './components/DriveUrlProcessor';
+import WorkflowManager from './components/WorkflowManager';
 import './App.css';
 
 function App() {
@@ -23,6 +24,10 @@ function App() {
         <Routes>
           <Route 
             path="/" 
+            element={user ? <WorkflowManager /> : <Login />} 
+          />
+          <Route 
+            path="/settings" 
             element={user ? <UserSettings /> : <Login />} 
           />
           <Route 
