@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { env } from '../config/env';
 import { validateOutput } from './schema';
-import { SYSTEM, buildPrompt, buildBatchPrompt } from './prompts';
+import { getSystemPrompt, buildPrompt, buildBatchPrompt } from './prompts';
 
 
 async function callGroqWithRetry(messages: Array<{ role: string; content: string }>): Promise<string> {
@@ -54,8 +54,9 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 }
 
 export async function normalizeMarkdown(markdown: string): Promise<{ invoice: any; line_items: any[] }>{
+  const system = await getSystemPrompt();
   const messages = [
-    { role: 'system', content: SYSTEM },
+    { role: 'system', content: system },
     { role: 'user', content: buildPrompt(markdown) },
   ];
   const text = await callGroqWithRetry(messages);
@@ -64,7 +65,7 @@ export async function normalizeMarkdown(markdown: string): Promise<{ invoice: an
   // One retry with stricter instruction if parsing failed
   if (!json) {
     const retryMessages = [
-      { role: 'system', content: SYSTEM },
+      { role: 'system', content: system },
       { role: 'user', content: `${buildPrompt(markdown)}\n\nIMPORTANT: Respond with ONLY minified JSON. No prose, no code fences.` },
     ];
     const retryText = await callGroqWithRetry(retryMessages);
@@ -87,15 +88,16 @@ export async function normalizeMarkdownBatch(markdowns: string[]): Promise<Array
   const chunks = chunkArray(markdowns, maxPerBatch);
   const allResults: Array<{ invoice: any; line_items: any[] }> = [];
   for (const chunk of chunks) {
+    const system = await getSystemPrompt();
     const messages = [
-      { role: 'system', content: SYSTEM },
+      { role: 'system', content: system },
       { role: 'user', content: buildBatchPrompt(chunk) },
     ];
     const text = await callGroqWithRetry(messages);
     let json: any = attemptParseJson(text);
     if (!json || (!Array.isArray(json) && !(json && typeof json === 'object' && 'invoice' in json && 'line_items' in json))) {
       const retryMessages = [
-        { role: 'system', content: SYSTEM },
+        { role: 'system', content: system },
         { role: 'user', content: `${buildBatchPrompt(chunk)}\n\nIMPORTANT: Respond with ONLY minified JSON array. No prose, no code fences.` },
       ];
       const retryText = await callGroqWithRetry(retryMessages);

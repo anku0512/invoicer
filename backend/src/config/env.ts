@@ -31,6 +31,9 @@ const EnvSchema = z.object({
   GROQ_RETRY_BASE_MS: z.coerce.number().default(1000),
   GROQ_BATCH_SIZE: z.coerce.number().default(5),
 
+  // Optional path override for system prompt Markdown file
+  SYSTEM_PROMPT_PATH: z.string().optional(),
+
   POLL_CRON: z.string().default('*/1 * * * *'),
   BATCH_SIZE: z.coerce.number().default(1),
   POLL_INTERVAL_MS: z.coerce.number().default(2000),

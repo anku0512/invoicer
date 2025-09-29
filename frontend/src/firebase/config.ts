@@ -16,12 +16,6 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/gmail.modify');
-googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-googleProvider.addScope('https://www.googleapis.com/auth/spreadsheets');
-googleProvider.setCustomParameters({
-  prompt: 'consent',
-  access_type: 'offline'
-});
+// Basic sign-in only; no extra scopes at initial login
 
 export default app;
