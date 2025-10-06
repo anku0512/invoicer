@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { OAuth2Client } from 'google-auth-library';
+import { google } from 'googleapis';
 import { EmailChecker } from './cron/emailChecker';
 import { downloadDriveFile } from './google/drive';
 import { prepareTmp, isZip, writeZipAndExtract } from './ingest/fileHandler';
@@ -914,10 +915,14 @@ app.get('/api/workflows', async (req, res) => {
         updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : data.updatedAt,
         lastRunAt: data.lastRunAt?.toMillis ? data.lastRunAt.toMillis() : data.lastRunAt
       };
+
+      // Ensure response `id` is always the Firestore doc id (not any inner `id` field)
+      // Strip any inner `id` from the stored data to avoid overwriting
+      const { id: _innerId, ...rest } = convertedData as any;
       
       workflows.push({
-        id: doc.id,
-        ...convertedData
+        ...rest,
+        id: doc.id
       });
     });
     
@@ -1045,7 +1050,46 @@ app.put('/api/workflows/:id', async (req, res) => {
       });
     }
     
+    // Fetch existing document to compare fields
+    const existingDoc = await workflowRef.get();
+    if (!existingDoc.exists) {
+      return res.status(404).json({ success: false, error: 'Workflow not found' });
+    }
+    const existingData: any = existingDoc.data() || {};
+
+    // If sheet name changed, attempt to rename the Google Spreadsheet title
+    try {
+      const prevSheetName = existingData?.io?.output?.sheetName;
+      const nextSheetName = (updateData?.io?.output?.sheetName) ?? prevSheetName;
+      const sheetId = existingData?.io?.output?.sheetId;
+
+      if (sheetId && nextSheetName && nextSheetName !== prevSheetName) {
+        // Use user's OAuth client to rename spreadsheet title
+        const userOAuthClient = await getUserGoogleClient(firebaseUid);
+        const sheets = google.sheets({ version: 'v4', auth: userOAuthClient });
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: sheetId,
+          requestBody: {
+            requests: [
+              {
+                updateSpreadsheetProperties: {
+                  properties: { title: nextSheetName },
+                  fields: 'title'
+                }
+              }
+            ]
+          }
+        });
+      }
+    } catch (renameError) {
+      console.log('Sheet rename failed or skipped:', (renameError as Error)?.message);
+      // Continue even if rename fails; we still update our stored metadata
+    }
+
     await workflowRef.update(workflow);
+
+    // If client tries to change the Google Sheet's display name, we currently do not rename the
+    // actual Google Sheet via Sheets API in this endpoint. The UI should treat sheetName as an app label.
     
     // Convert Firestore Timestamps to JavaScript timestamps for response
     const convertedExisting = {
@@ -1055,12 +1099,15 @@ app.put('/api/workflows/:id', async (req, res) => {
       lastRunAt: existingWorkflow?.lastRunAt?.toMillis ? existingWorkflow.lastRunAt.toMillis() : existingWorkflow?.lastRunAt
     };
     
+    // Ensure response `id` is always the Firestore doc id and not overwritten
+    const { id: _existingInnerId, ...restExisting } = convertedExisting as any;
+    const { id: _updateInnerId, ...restUpdate } = workflow as any;
     res.json({ 
       success: true, 
       workflow: {
-        id: workflowId,
-        ...convertedExisting,
-        ...workflow
+        ...restExisting,
+        ...restUpdate,
+        id: workflowId
       }
     });
     
@@ -1097,25 +1144,40 @@ app.delete('/api/workflows/:id', async (req, res) => {
     console.log(`Deleting workflow ${workflowId} for user: ${firebaseUid}`);
     
     // Check if workflow exists and belongs to user
-    const workflowRef = db.collection('workflows').doc(workflowId);
-    const workflowDoc = await workflowRef.get();
-    
-    if (!workflowDoc.exists) {
+  let workflowRef = db.collection('workflows').doc(workflowId);
+  let workflowDoc = await workflowRef.get();
+
+  // Fallback: if no doc with this Firestore ID, try finding a doc whose inner `id` equals workflowId (legacy records)
+  if (!workflowDoc.exists) {
+    const fallbackSnap = await db
+      .collection('workflows')
+      .where('uid', '==', firebaseUid)
+      .where('id', '==', workflowId)
+      .limit(1)
+      .get();
+
+    if (fallbackSnap.empty) {
       return res.status(404).json({ 
         success: false, 
         error: 'Workflow not found' 
       });
     }
-    
-    const existingWorkflow = workflowDoc.data();
-    if (existingWorkflow?.uid !== firebaseUid) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Access denied' 
-      });
-    }
-    
-    await workflowRef.delete();
+
+    // Use the first matching doc
+    const docMatch = fallbackSnap.docs[0];
+    workflowRef = db.collection('workflows').doc(docMatch.id);
+    workflowDoc = await workflowRef.get();
+  }
+
+  const existingWorkflow = workflowDoc.data();
+  if (existingWorkflow?.uid !== firebaseUid) {
+    return res.status(403).json({ 
+      success: false, 
+      error: 'Access denied' 
+    });
+  }
+
+  await workflowRef.delete();
     
     res.json({ 
       success: true, 
