@@ -18,7 +18,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Helper function to process a single Drive file
-async function processSingleDriveFile(fileId: string, sheetId: string): Promise<void> {
+async function processSingleDriveFile(fileId: string, sheetId: string, userAuth?: any): Promise<void> {
   console.log(`Processing Drive file: ${fileId}`);
   
   try {
@@ -30,7 +30,7 @@ async function processSingleDriveFile(fileId: string, sheetId: string): Promise<
     
     try {
       console.log('Attempting to download file from Google Drive...');
-      fileData = await downloadDriveFile(fileId);
+      fileData = await downloadDriveFile(fileId, userAuth);
       console.log(`Downloaded file: ${fileData.fileName} (${fileData.buffer.length} bytes, ${fileData.mimeType})`);
     } catch (error) {
       console.log('Google Drive download failed (likely missing credentials), using realistic test invoice...');
@@ -230,20 +230,20 @@ startxref
 
           // Ensure headers exist in the target sheet
           console.log('Ensuring headers in target sheet...');
-          await ensureHeaders(sheetId);
+          await ensureHeaders(sheetId, userAuth);
           console.log('✅ Headers ensured');
 
           // Write invoices to the target sheet
           if (allInvoices.length > 0) {
             console.log('Writing invoices to Google Sheets...');
-            await upsertInvoices(allInvoices, sheetId);
+            await upsertInvoices(allInvoices, sheetId, userAuth);
             console.log(`✅ ${allInvoices.length} invoices written to Google Sheets`);
           }
 
           // Write line items to the target sheet
           if (allLines.length > 0) {
             console.log('Writing line items to Google Sheets...');
-            await appendLineItems(allLines, sheetId);
+            await appendLineItems(allLines, sheetId, userAuth);
             console.log(`✅ ${allLines.length} line items written to Google Sheets`);
           }
 
@@ -650,13 +650,13 @@ app.post('/api/workflow/sheets/create', async (req, res) => {
     // Get fresh OAuth client for this request
     let userOAuthClient;
     try {
-      userOAuthClient = await getUserGoogleClient(firebaseUid);
+      userOAuthClient = await getUserGoogleClient(firebaseUid as string);
     } catch (error: any) {
       console.log(`🔍 Debug: Failed to get OAuth client for user ${firebaseUid}:`, error.message);
       return res.status(401).json({ 
         success: false, 
         error: 'User not authenticated with Google. Please complete OAuth flow first.',
-        authUrl: getGoogleOAuthURL(firebaseUid)
+        authUrl: getGoogleOAuthURL(firebaseUid as string)
       });
     }
     
@@ -815,7 +815,7 @@ app.post('/api/process-url', async (req, res) => {
   
   try {
     // Process the file using LlamaParse and your existing logic
-    await processSingleDriveFile(fileId, sheetId);
+    await processSingleDriveFile(fileId, sheetId, userOAuthClient);
       
       console.log('Drive URL processing completed successfully');
       res.status(200).json({ 
