@@ -265,7 +265,7 @@ export class WorkflowService {
       // Add extracted files to the list
       for (const extractedFile of extractedResult.files) {
         // Create a virtual file object for the extracted file
-        const virtualFile = {
+        const virtualFile: any = {
           id: `extracted_${zipFile.id}_${extractedFile.fileName}`,
           name: extractedFile.fileName,
           mimeType: this.getMimeTypeFromFileName(extractedFile.fileName),
@@ -277,6 +277,13 @@ export class WorkflowService {
           originalZipId: zipFile.id,
           filePath: extractedFile.filePath
         };
+        // Read buffer immediately to avoid later ENOENT if temp files are moved/cleaned
+        try {
+          const buf = require('fs').readFileSync(extractedFile.filePath);
+          virtualFile.buffer = buf;
+        } catch (e) {
+          // If reading fails now, keep filePath fallback (will attempt later)
+        }
         
         allFiles.push(virtualFile);
         console.log(`Added extracted file: ${extractedFile.fileName}`);
@@ -328,7 +335,7 @@ export class WorkflowService {
       let skippedCount = 0;
 
       for (const file of files) {
-        const isProcessed = await this.fileTrackingService.isFileProcessed(firebaseUid, file.id!);
+        const isProcessed = await this.fileTrackingService.isFileProcessed(firebaseUid, file.id!, sheetId);
         if (isProcessed) {
           console.log(`Skipping already processed file: ${file.name} (${file.id})`);
           skippedCount++;
@@ -361,20 +368,21 @@ export class WorkflowService {
             file.id!, 
             file.name!, 
             file.webViewLink || '', 
-            sheetId
+            sheetId,
+            undefined // workflowId can be threaded here if available at call site
           );
 
           // Process the file using existing logic
           await this.processSingleFile(file.id!, sheetId, acc, userAuth, file);
           
           // Mark file as completed
-          await this.fileTrackingService.markFileCompleted(firebaseUid, file.id!);
+          await this.fileTrackingService.markFileCompleted(firebaseUid, file.id!, sheetId);
           processedCount++;
           
           console.log(`Successfully processed file: ${file.name}`);
         } catch (error: any) {
           console.error(`Error processing file ${file.name}:`, error.message);
-          await this.fileTrackingService.markFileFailed(firebaseUid, file.id!, error.message);
+          await this.fileTrackingService.markFileFailed(firebaseUid, file.id!, error.message, sheetId);
         }
       }
 
@@ -414,10 +422,16 @@ export class WorkflowService {
       let filesToProcess: { buffer: Buffer; fileName: string }[] = [];
       
       // Check if this is an extracted file from a zip
-      if (file?.isExtracted && file?.filePath) {
+      if (file?.isExtracted) {
         console.log(`Processing extracted file: ${file.name}`);
-        const buffer = fs.readFileSync(file.filePath);
-        filesToProcess = [{ buffer, fileName: file.name }];
+        if (file?.buffer) {
+          filesToProcess = [{ buffer: file.buffer as Buffer, fileName: file.name }];
+        } else if (file?.filePath) {
+          const buffer = fs.readFileSync(file.filePath);
+          filesToProcess = [{ buffer, fileName: file.name }];
+        } else {
+          throw new Error('Extracted file missing buffer and filePath');
+        }
       } else {
         // Download file from Google Drive using user's OAuth client
         const fileData = await downloadDriveFile(fileId, userAuth);

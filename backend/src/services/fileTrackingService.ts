@@ -8,6 +8,8 @@ export interface ProcessedFile {
   status: 'processing' | 'completed' | 'failed';
   error?: string;
   sheetId: string;
+  // Optional: capture workflow-level association when provided by callers
+  workflowId?: string;
 }
 
 export interface UserFileTracking {
@@ -22,7 +24,7 @@ export class FileTrackingService {
   /**
    * Check if a file has already been processed
    */
-  async isFileProcessed(userId: string, fileId: string): Promise<boolean> {
+  async isFileProcessed(userId: string, fileId: string, sheetId?: string): Promise<boolean> {
     try {
       const userDoc = await db.collection(this.collectionName).doc(userId).get();
       if (!userDoc.exists) {
@@ -30,7 +32,11 @@ export class FileTrackingService {
       }
 
       const data = userDoc.data() as UserFileTracking;
-      const processedFile = data.processedFiles.find(file => file.fileId === fileId);
+      // If sheetId is provided, require both fileId and sheetId to match (sheet-level tracking)
+      const processedFile = data.processedFiles.find(file => {
+        if (sheetId) return file.fileId === fileId && file.sheetId === sheetId;
+        return file.fileId === fileId;
+      });
       
       return processedFile?.status === 'completed';
     } catch (error) {
@@ -42,7 +48,7 @@ export class FileTrackingService {
   /**
    * Mark a file as being processed
    */
-  async markFileProcessing(userId: string, fileId: string, fileName: string, fileUrl: string, sheetId: string): Promise<void> {
+  async markFileProcessing(userId: string, fileId: string, fileName: string, fileUrl: string, sheetId: string, workflowId?: string): Promise<void> {
     try {
       const processedFile: ProcessedFile = {
         fileId,
@@ -53,16 +59,24 @@ export class FileTrackingService {
         sheetId
       };
 
+      // Only set workflowId if provided to avoid writing undefined
+      if (typeof workflowId !== 'undefined') {
+        processedFile.workflowId = workflowId;
+      }
+
       const userDocRef = db.collection(this.collectionName).doc(userId);
       const userDoc = await userDocRef.get();
       
       if (userDoc.exists) {
         const data = userDoc.data() as UserFileTracking;
-        const existingFileIndex = data.processedFiles.findIndex(file => file.fileId === fileId);
+        // Match on both fileId and sheetId for updates
+        const existingFileIndex = data.processedFiles.findIndex(file => file.fileId === fileId && file.sheetId === sheetId);
         
         if (existingFileIndex >= 0) {
-          // Update existing file
-          data.processedFiles[existingFileIndex] = processedFile;
+          // Update existing file, avoiding undefined fields
+          const updated = { ...data.processedFiles[existingFileIndex], ...processedFile } as any;
+          if (typeof processedFile.workflowId === 'undefined') delete updated.workflowId;
+          data.processedFiles[existingFileIndex] = updated;
         } else {
           // Add new file
           data.processedFiles.push(processedFile);
@@ -93,14 +107,14 @@ export class FileTrackingService {
   /**
    * Mark a file as completed processing
    */
-  async markFileCompleted(userId: string, fileId: string): Promise<void> {
+  async markFileCompleted(userId: string, fileId: string, sheetId?: string): Promise<void> {
     try {
       const userDocRef = db.collection(this.collectionName).doc(userId);
       const userDoc = await userDocRef.get();
       
       if (userDoc.exists) {
         const data = userDoc.data() as UserFileTracking;
-        const fileIndex = data.processedFiles.findIndex(file => file.fileId === fileId);
+        const fileIndex = data.processedFiles.findIndex(file => sheetId ? (file.fileId === fileId && file.sheetId === sheetId) : (file.fileId === fileId));
         
         if (fileIndex >= 0) {
           data.processedFiles[fileIndex].status = 'completed';
@@ -109,7 +123,7 @@ export class FileTrackingService {
             processedFiles: data.processedFiles,
             lastUpdated: data.lastUpdated
           });
-          console.log(`Marked file ${fileId} as completed for user ${userId}`);
+          console.log(`Marked file ${fileId} as completed for user ${userId}${sheetId ? ` (sheet ${sheetId})` : ''}`);
         }
       }
     } catch (error) {
@@ -121,14 +135,14 @@ export class FileTrackingService {
   /**
    * Mark a file as failed processing
    */
-  async markFileFailed(userId: string, fileId: string, error: string): Promise<void> {
+  async markFileFailed(userId: string, fileId: string, error: string, sheetId?: string): Promise<void> {
     try {
       const userDocRef = db.collection(this.collectionName).doc(userId);
       const userDoc = await userDocRef.get();
       
       if (userDoc.exists) {
         const data = userDoc.data() as UserFileTracking;
-        const fileIndex = data.processedFiles.findIndex(file => file.fileId === fileId);
+        const fileIndex = data.processedFiles.findIndex(file => sheetId ? (file.fileId === fileId && file.sheetId === sheetId) : (file.fileId === fileId));
         
         if (fileIndex >= 0) {
           data.processedFiles[fileIndex].status = 'failed';
@@ -138,7 +152,7 @@ export class FileTrackingService {
             processedFiles: data.processedFiles,
             lastUpdated: data.lastUpdated
           });
-          console.log(`Marked file ${fileId} as failed for user ${userId}: ${error}`);
+          console.log(`Marked file ${fileId} as failed for user ${userId}${sheetId ? ` (sheet ${sheetId})` : ''}: ${error}`);
         }
       }
     } catch (error) {
